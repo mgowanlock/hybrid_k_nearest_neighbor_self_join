@@ -47,7 +47,7 @@ The parameters file, params.h, contains several parameters. The main parameters 
 # Executing the algorithm
 Update the Makefile to include the compute capability of your Nvidia GPU, and compile using the Makefile.
 
-On the command line, the algorithm takes as input the dataset file \<FNAME\>, the dimensionality of the data \<DIM\>, and the value for $k$ \<K\>. The program is executed as follows:
+On the command line, the algorithm takes as input the dataset file \<FNAME\>, the dimensionality of the data \<DIM\>, and the value for *k* \<K\>. The program is executed as follows:
 
 ```
 $./main <FNAME> <DIM> <K>
@@ -55,3 +55,8 @@ $./main <FNAME> <DIM> <K>
 
 By default, the algorithm will output the neighbors to a file called "KNN.txt", which contains the point ID and all of its neighbors. The code can be modified to incorporate the KNN into other applications such that printing to a file is unnecessary.
   
+# Example data
+The data file gaia_dr2_ra_dec_25M.txt is the Gaia dataset in the paper. 
+For validation purposes, the program will output the sum of the distances between all points and their *k* nearest neighbors. As an example, the total unsquared distance for k=128 on the Gaia dataset is below. This can be used to ensure that your implementation is working correctly.
+
+[Verification] Total distance (unsquared): 23999187.187628
