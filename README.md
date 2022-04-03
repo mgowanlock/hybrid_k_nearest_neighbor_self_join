@@ -44,7 +44,7 @@ Update the Makefile to include the compute capability of your Nvidia GPU, and co
 On the command line, the algorithm takes as input the dataset file \<FNAME\>, the dimensionality of the data \<DIM\>, and the value for $k$ \<K\>. The program is executed as follows:
 
 ```
-$./main \<FNAME\> \<DIM\> \<K\>
+$./main <FNAME> <DIM> <K>
 ```
 
 By default, the algorithm will output the neighbors to a file called "KNN.txt", which contains the point ID and all of its neighbors. The code can be modified to incorporate the KNN into other applications such that printing to a file is unnecessary.
