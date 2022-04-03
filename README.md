@@ -56,7 +56,7 @@ $./main <FNAME> <DIM> <K>
 By default, the algorithm will output the neighbors to a file called "KNN.txt", which contains the point ID and all of its neighbors. The code can be modified to incorporate the KNN into other applications such that printing to a file is unnecessary.
   
 # Example data
-The data file gaia_dr2_ra_dec_25M.txt is the Gaia dataset in the paper. 
+The data file gaia_dr2_ra_dec_25M.txt is the Gaia dataset in the paper. It can be found here: https://rcdata.nau.edu/gowanlock_lab/datasets/hybrid_KNN/gaia_25M.tar.gz
 For validation purposes, the program will output the sum of the distances between all points and their *k* nearest neighbors. As an example, the total unsquared distance for k=128 on the Gaia dataset is below. This can be used to ensure that your implementation is working correctly.
 
 [Verification] Total distance (unsquared): 23999187.187628
