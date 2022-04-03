@@ -31,7 +31,7 @@ The algorithm has a parameter, BETA, that can be used to increase the initial se
 
 As an example, the figure below shows the response time as a function of BETA for *k=8, 64, 128* on the Gaia 25 million point dataset. Observe that 1) larger values of *k* are more sensitive to the paramter; and, 2) A very low value of BETA perfoms well, such as 0.025. This is on a single dataset, and performance will differ on other datasets.
 
-![time_vs_beta](time_vs_beta_gaia_25M.pdf)
+![time_vs_beta](time_vs_beta_gaia_25M.png)
 
 # Parameters
 
