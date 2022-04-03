@@ -53,7 +53,7 @@ On the command line, the algorithm takes as input the dataset file \<FNAME\>, th
 $./main <FNAME> <DIM> <K>
 ```
 
-By default, the algorithm will output the neighbors to a file called "KNN.txt", which contains the point ID and all of its neighbors. The code can be modified to incorporate the KNN into other applications such that printing to a file is unnecessary.
+By default, the algorithm will output the neighbors to a file called "KNN_out.txt", which contains the point ID and all of its neighbors. The code can be modified to incorporate the KNN into other applications such that printing to a file is unnecessary.
   
 # Example data
 The data file gaia_dr2_ra_dec_25M.txt is the Gaia dataset in the paper. It can be found here: https://rcdata.nau.edu/gowanlock_lab/datasets/hybrid_KNN/gaia_25M.tar.gz
