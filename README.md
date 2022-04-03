@@ -8,9 +8,8 @@ The use of MPI made the implementation significantly more complicated, as the co
 
 Since the hybrid CPU+GPU algorithm was designed such that the GPU computes the queries in dense regions, and the CPU computes queries in sparse regions, the GPU algorithm was not designed to compute queries that require large search distances, which occurs when queries are in sparse regions. An illustration of indexing is shown in the figure below. Thus, the performance of the GPU-only algorithm is poor if using a dataset with significant skew. It will perform well on datasets with uniform distributions. In short, this algorithm is **intended for use with another algorithm that can "clean up" those KNN searches in sparsely populated areas** of the data space. Therefore, if you use this algorithm, be conscious of the fact that it may not perform well across all data distributions. The paper shows additional details regarding the GPU-only component of the algorithm.
 
-<div align=”center”>
 ![indexing_gpu_cpu](gpu_cpu_indexing.png)
-</div>
+
 
 ## Acknowledgements
 This material is based upon work supported by the National Science Foundation under Grant No. 1849559.
@@ -32,9 +31,9 @@ The algorithm has a parameter, BETA, that can be used to increase the initial se
 
 As an example, the figure below shows the response time as a function of BETA for *k=8, 64, 128* on the Gaia 25 million point dataset. Observe that 1) larger values of *k* are more sensitive to the paramter; and, 2) A very low value of BETA perfoms well, such as 0.025. This is on a single dataset, and performance will differ on other datasets.
 
-<div align=”center”>
+
 ![time_vs_beta](time_vs_beta_gaia_25M.png)
-</div>
+
 
 # Parameters
 
