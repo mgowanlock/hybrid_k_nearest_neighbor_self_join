@@ -63,7 +63,7 @@ For validation purposes, the program will output the sum of the distances betwee
 
 [Verification] Total distance (without square root): 23999187.187628
 
-## Overview: Python Interface
+# Python Interface
 A Python interface has been provided that uses a shared library to access the C/CUDA code. 
 
 To use the Python interface, edit the makefile with your settings and compile the shared library using the Makefile target as follows:
