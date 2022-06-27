@@ -84,7 +84,10 @@ neighborTable, neighborTableDistances = knnjoingpu.knnjoin(dataset, KNN, numdim,
 After running the program using the dataset described above with K=5, you should see the following output, which shows the k-NN for the first and last point in the dataset and the corresponding distances.
 
 [    0  2135 13737 11757 11939  3897]
+
 [24999999 24996797 24995960 24988992 24996019 24995882]
+
 [0.         0.01367115 0.01500092 0.01559466 0.0169069  0.01747429]
+
 [0.         0.01285255 0.0454131  0.05056508 0.05199444 0.05496496]
 
