@@ -1,5 +1,7 @@
 # Overview: Hybrid CPU+GPU k-nearest-neighbor self-join algorithm
 
+**Update: Instructions for using the Python wrapper are below**
+
 This is the GPU *k*-nearest neighbor (KNN) self-join implementation reported in Gowanlock (2021) (paper reference below). The KNN self-join takes as input a dataset, and finds the KNN for all points in the dataset. This algorithm is designed for low to moderate dimensionality (i.e., 2-8 dimensions).
 
 The paper demonstrates a hybrid CPU+GPU KNN self-join algorithm with a workqueue that assigns KNN searches in regions with high density to the GPU and those in low density regions to the CPU. The CPU KNN algorithm in the paper is the Approximate Nearest Neighbors by Mount & Arya, configured to generate the exact neighbors (link below). Although the algorithm was intended for execution on a single computer in a shared-memory environment, the ANN algorithm was parallelized using MPI in Gowanlock (2021) because the sequential ANN source code had several global variables that made shared-memory parallelization very challenging (e.g., race conditions were prevalent), and I was not satisfied with the possibility of non-deterministic bugs, so MPI was used for parallelization. 
@@ -60,3 +62,29 @@ The data file gaia_dr2_ra_dec_25M.txt is the Gaia dataset in the paper. It can b
 For validation purposes, the program will output the sum of the distances between all points and their *k* nearest neighbors. As an example, the total unsquared distance for k=128 on the Gaia dataset is below. This can be used to ensure that your implementation is working correctly.
 
 [Verification] Total distance (without square root): 23999187.187628
+
+## Overview: Python Interface
+A Python interface has been provided that uses a shared library to access the C/CUDA code. 
+
+To use the Python interface, edit the makefile with your settings and compile the shared library using the Makefile target as follows:
+$make make_python_shared_lib
+
+The settings that you will need to update are:
+* The desired data dimensionality and number of indexed dimensions.
+* The compute capability of your GPU.
+* Any changes to the params.h file (described above). It is unlikely that you will need to change any parameters, although one common change might be to use doubles instead of floats.
+
+After compiling the shared library, you can use the Python interface, where knnjoingpu.py is Python wrapper around the C/CUDA code, and KNNJoin_test_example.py shows an example of using the library.
+
+The interface returns the list of K nearest neighbors for each point in the dataset, and the distances to the neighbors.
+
+The interface is below:
+neighborTable, neighborTableDistances = knnjoingpu.knnjoin(dataset, KNN, numdim, dtype, verbose)
+
+After running the program using the dataset described above with K=5, you should see the following output, which shows the k-NN for the first and last point in the dataset and the corresponding distances.
+
+[    0  2135 13737 11757 11939  3897]
+[24999999 24996797 24995960 24988992 24996019 24995882]
+[0.         0.01367115 0.01500092 0.01559466 0.0169069  0.01747429]
+[0.         0.01285255 0.0454131  0.05056508 0.05199444 0.05496496]
+
