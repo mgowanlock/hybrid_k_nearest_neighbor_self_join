@@ -13,6 +13,21 @@
 #include "params.h"
 
 
+//for outlier detection
+//for each of the sum of distances we need to sort by distance to obtain the outlier scores
+struct keyValPointDistStruct
+{
+	int pointID;
+	DTYPE distance;
+};
+
+//for outlier detection
+//for each point, we count the number of times it appears in another point's kNN set
+struct keyValPointFrequencyKNNGraphStruct
+{
+	int pointID;
+	uint64_t numTimesInOtherSet;
+};
 
 //used for sort-and-search brute force to sort in first dimension and map to original element id
 struct databaseSortMap

@@ -3335,6 +3335,7 @@ void sampleNeighborsBruteForce(std::vector<std::vector <DTYPE> > * NDdataPoints,
 
 	unsigned int * nbuckets;
 	nbuckets=(unsigned int*)malloc(sizeof(unsigned int));
+	// *nbuckets=10000; //original
 	*nbuckets=10000;
 
 	double * dev_avg_distance;
@@ -3512,6 +3513,16 @@ void sampleNeighborsBruteForce(std::vector<std::vector <DTYPE> > * NDdataPoints,
 				flag=1;
 			}
 
+			//if the last iteration and the bucket has not been found, set to the last bucket
+			//modified for outlier detection for potentially high values of K
+			if ((i==(*nbuckets)-1) && (bucketNumFound==-1))
+			{
+				
+				bestEpsilon=(*bucketWidth*(i+1.0));
+				bucketNumFound=i;
+				printf("\nThe bucket was not found even at the last bucket. Setting epsilon to be estimated based on the last bucket.\nBest epsilon: %f", bestEpsilon);
+			}
+
 		}
 
 	
@@ -3677,10 +3688,10 @@ void storeNeighborTableForkNNOnTheFly(int * pointIDKey, int * pointInDistValue, 
 
 		for (uint64_t j=minIdx; j<maxIdx; j++)
 		{
-			totaldisttmp+=(distancePointInDistValue[j]*distancePointInDistValue[j]); //unsquared
+			totaldisttmp+=(distancePointInDistValue[j]*distancePointInDistValue[j]); //unsquare rooted
 		}
 
-		// std::copy(&distancePointInDistValue[minIdx], &distancePointInDistValue[maxIdx], nearestNeighborTableDistances+offset);	
+		std::copy(&distancePointInDistValue[minIdx], &distancePointInDistValue[maxIdx], nearestNeighborTableDistances+offset);	
 		
 	}
 

@@ -13,6 +13,16 @@
 //for smaller batches to be processed
 #define GPUBUFFERSIZE 75000000 
 
+
+///////////////////////
+//Utility
+//used for outputting the neighbors at the end
+#define PRINTNEIGHBORTABLE 0
+//used for printing outlier scores based on point density at the end of program execution
+#define PRINTOUTLIERSCORES 0 //make sure to disable unicomp (STAMP==0) if printing the outlier scores (it was only implemented for this case)
+//end utility
+///////////////////////
+
 //////////////////////////////////////
 
 //It is unlikely you will need to change anything below:

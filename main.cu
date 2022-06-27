@@ -59,13 +59,24 @@ bool compareWorkArrayByNumPointsInCell(const workArray &a, const workArray &b)
     return a.pntsInCell > b.pntsInCell;
 }
 
+//sort descending
+bool compareByPointValue(const keyValPointDistStruct &a, const keyValPointDistStruct &b)
+{
+    return a.distance > b.distance;
+}
+
+//sort ascending
+bool compareByPointFrequencyInOtherSets(const keyValPointFrequencyKNNGraphStruct &a, const keyValPointFrequencyKNNGraphStruct &b)
+{
+    return a.numTimesInOtherSet < b.numTimesInOtherSet;
+}
 
 using namespace std;
 
 //function prototypes
 
 
-void printNeighborTable(unsigned int databaseSize, int k_Neighbors, int * nearestNeighborTable);
+void printNeighborTable(unsigned int databaseSize, int k_Neighbors, int * nearestNeighborTable, DTYPE * nearestNeighborTableDistances);
 void splitWork(unsigned int k_neighbors, std::vector<unsigned int> * queriesCPU, std::vector<unsigned int> * queriesGPU, struct gridCellLookup * gridCellLookupArr, unsigned int * nNonEmptyCells, unsigned int * indexLookupArr, struct grid * index);
 void generateNeighborTableCPUPrototype(std::vector<std::vector <DTYPE> > *NDdataPoints, unsigned int queryPoint, DTYPE epsilon, grid * index, struct gridCellLookup * gridCellLookupArr, unsigned int * nNonEmptyCells, unsigned int * indexLookupArr, std::vector<uint64_t> * cellsToCheck, table * neighborTableCPUPrototype);
 void findNonEmptyCellsPrototype(DTYPE * point, DTYPE* epsilon, grid * index, DTYPE* minArr, struct gridCellLookup * gridCellLookupArr, unsigned int * nNonEmptyCells, unsigned int * nCells, unsigned int * gridCellNDMask, unsigned int * gridCellNDMaskOffsets, std::vector<uint64_t> * cellsToCheck);
@@ -91,8 +102,10 @@ int criticalCheckEquality(unsigned int * totalQueriesCompleted, unsigned long in
 
 void computeWorkDifficulty(unsigned int * outputOrderedQueryPntIDs, struct gridCellLookup * gridCellLookupArr, unsigned int * nNonEmptyCells, unsigned int * indexLookupArr, struct grid * index);
 
+//for outlier scores:
+void printOutlierScores(unsigned int databaseSize, int k_Neighbors, int * nearestNeighborTable, DTYPE * nearestNeighborTableDistances);
 
-
+#ifndef PYTHON //standard C version
 int main(int argc, char *argv[])
 {
 
@@ -156,7 +169,7 @@ int main(int argc, char *argv[])
 	int * ptr_to_neighbortable; //points to the neighbortable starting at elem 0 (in rank nprocs-1's memory)
 	ptr_to_neighbortable=nearestNeighborTable;
 	
-	DTYPE * ptr_to_neighbortable_distances=NULL; //points to the neighbortable distances starting at elem 0 (in rank nprocs-1's memory)
+	DTYPE * ptr_to_neighbortable_distances=(DTYPE *)malloc(sizeof(DTYPE)*elemBuffer); //updated this for outlier detection; was NULL, but needs to be allocated
 	
 
   	printf("\nSize of result set (GiB): %f", ((sizeof(int)*elemBuffer))/(1024.0*1024*1024));
@@ -324,6 +337,12 @@ int main(int argc, char *argv[])
 			double tstartindex=omp_get_wtime();
 			//Increase epsilon by 0.5 epsilon:
 			eps_est+=(eps_est_initial*0.5);
+
+			if(eps_est==0.0)
+			{
+				printf("\n\n******************\nError: Epsilon is 0!\nExiting.\n******************\n");
+				return(0);
+			}
 			
 			generateNDGridDimensions(&NDdataPoints,eps_est, minArr, maxArr, nCells, &totalCells);
 
@@ -430,7 +449,7 @@ int main(int argc, char *argv[])
 
 
 	
-	printf("\n[Verification] Total distance (unsquared): %f",totalDistance);
+	printf("\n[Verification] Total distance (without square root): %f",totalDistance);
 
 	//verification, check entire neighbortable
 	procNeighborTableForkNNUsingDirectTable(&NDdataPoints, kNN, &queriesGPU, ptr_to_neighbortable);
@@ -438,9 +457,15 @@ int main(int argc, char *argv[])
 
 	double gputime=tendGPU-tstart;
 	
-	
-	printNeighborTable(NDdataPoints.size(), kNN+1, ptr_to_neighbortable);
+	#if PRINTNEIGHBORTABLE==1
+	printNeighborTable(NDdataPoints.size(), kNN+1, ptr_to_neighbortable, ptr_to_neighbortable_distances);
+	#endif
 
+
+	//for outlier detection with SNAPS
+	#if PRINTOUTLIERSCORES==1
+	printOutlierScores(NDdataPoints.size(), kNN+1, ptr_to_neighbortable, ptr_to_neighbortable_distances);
+	#endif
 	
 	//Output stats to gpu_stats.txt
 	//dynamic	
@@ -479,20 +504,409 @@ int main(int argc, char *argv[])
 	}
 	*/
 
-
+	printf("\n\n");
 	return 0;
 
 }
+#endif //end #if not Python (standard C version)
+
+#ifdef PYTHON
+extern "C" void KNNJoinPy(DTYPE * dataset, unsigned int NUMPOINTS, unsigned int kNN, unsigned int NDIM, int * outNearestNeighborTable, DTYPE * outNearestNeighborTableDistances)
+{
+
+	
+
+	//nested so we can parallelize some of the GPU tasks
+	omp_set_nested(2);
+	/////////////////////////
+	// Get information from command line
+	//1) the dataset, 2) epsilon, 3) number of dimensions
+	/////////////////////////
+
+	if (GPUNUMDIM!=NDIM){
+		printf("\nERROR: The number of dimensions defined for the GPU is not the same as the number of dimensions\n \
+		 passed from the Python Interface. GPUNUMDIM=%d, NDIM=%d Exiting!!!",GPUNUMDIM,NDIM);
+		return;
+	}
+
+	
+
+	//////////////////////////////
+	//import the dataset:
+	/////////////////////////////
+	
+	std::vector<std::vector <DTYPE> > NDdataPoints;	
+
+	//copy data into the dataset vector
+	for (unsigned int i=0; i<NUMPOINTS; i++){
+  		unsigned int idxMin=i*GPUNUMDIM;
+  		unsigned int idxMax=(i+1)*GPUNUMDIM;
+		std::vector<DTYPE>tmpPoint(dataset+idxMin, dataset+idxMax);
+		NDdataPoints.push_back(tmpPoint);
+	}
+	
 
 
-void printNeighborTable(unsigned int databaseSize, int k_Neighbors, int * nearestNeighborTable)
+	// int * nearestNeighborTable;
+	// DTYPE * nearestNeighborTableDistances;
+	//size allocated- only allocate on master rank (rank nprocs-1)
+	unsigned long int elemBuffer=NDdataPoints.size()*(kNN+1);
+	// printf("\nNumber of data points: %lu",NDdataPoints.size());
+	// nearestNeighborTable=(int *)malloc(sizeof(int)*elemBuffer);
+	
+	 
+	int * ptr_to_neighbortable=outNearestNeighborTable;
+	
+	// DTYPE * outNearestNeighborTableDistances=(DTYPE *)malloc(sizeof(DTYPE)*elemBuffer); //updated this for outlier detection; was NULL, but needs to be allocated
+	
+
+  	printf("\nSize of result set (GiB): %f", ((sizeof(int)*elemBuffer))/(1024.0*1024*1024));
+
+	
+
+	char fname[]="gpu_stats.txt";
+	ofstream gpu_stats;
+	gpu_stats.open(fname,ios::app);	
+
+	printf("\n*****************\nWarming up GPU:\n*****************\n");
+	warmUpGPU();
+	printf("\n*****************\n");
+
+	DTYPE * minArr= new DTYPE[NUMINDEXEDDIM];
+	DTYPE * maxArr= new DTYPE[NUMINDEXEDDIM];
+	unsigned int * nCells= new unsigned int[NUMINDEXEDDIM];
+	uint64_t totalCells=0;
+	unsigned int nNonEmptyCells=0;
+	uint64_t totalNeighbors =0;
+	double totalTime=0;
+	double timeReorderByDimVariance=0;	
+
+	//for conssitency
+	double totalDistance=0;
+	
+
+	#if REORDER==1
+	double reorder_start=omp_get_wtime();
+	ReorderByDimension(&NDdataPoints);
+	double reorder_end=omp_get_wtime();
+	timeReorderByDimVariance= reorder_end - reorder_start;
+	#endif
+
+    
+    DTYPE eps_est=0;
+    DTYPE eps_est_initial=0;	
+    unsigned int bucket=0;
+    double tstartEstEps=omp_get_wtime();
+    sampleNeighborsBruteForce(&NDdataPoints, &eps_est, &bucket, kNN);
+    double tendEstEps=omp_get_wtime();
+    double timeEstEps=tendEstEps - tstartEstEps;
+    printf("\nTime to estimate epsilon: %f", timeEstEps);
+
+    
+
+    printf("\nMain: estimate of epsilon: %0.9f",eps_est);
+    eps_est_initial=eps_est;
+	
+
+	generateNDGridDimensions(&NDdataPoints,eps_est, minArr, maxArr, nCells, &totalCells);
+	printf("\nGrid: total cells (including empty) %lu",totalCells);
+
+	
+
+
+	// allocate memory for index now that we know the number of cells
+	//the grid struct itself
+	//the grid lookup array that accompanys the grid -- so we only send the non-empty cells
+	struct grid * index; //allocate in the populateDNGridIndexAndLookupArray -- only index the non-empty cells
+	struct gridCellLookup * gridCellLookupArr; //allocate in the populateDNGridIndexAndLookupArray -- list of non-empty cells
+
+	//the grid cell mask tells you what cells are non-empty in each dimension
+	//used for finding the non-empty cells that you want
+	// unsigned int * gridCellNDMask; //allocate in the populateDNGridIndexAndLookupArray -- list of cells in each n-dimension that have elements in them
+	// unsigned int * nNDMaskElems= new unsigned int; //size of the above array
+	// unsigned int * gridCellNDMaskOffsets=new unsigned int [NUMINDEXEDDIM*2]; //offsets into the above array for each dimension
+																	//as [min,max,min,max,min,max] (for 3-D)	
+
+	//ids of the elements in the database that are found in each grid cell
+	unsigned int * indexLookupArr=new unsigned int[NDdataPoints.size()]; 
+	
+	//CPU indexing- GPGPU paper
+	// populateNDGridIndexAndLookupArray(&NDdataPoints, eps_est, &gridCellLookupArr, &index, indexLookupArr, minArr,  nCells, totalCells, &nNonEmptyCells);
+	
+	//GPU indexing
+	populateNDGridIndexAndLookupArrayGPU(&NDdataPoints, &eps_est, minArr, totalCells, nCells, &gridCellLookupArr, &index, indexLookupArr, &nNonEmptyCells);
+	
+
+
+	//Neighbortable storage -- the result
+	neighborTableLookup * neighborTable= new neighborTableLookup[NDdataPoints.size()];
+	std::vector<struct neighborDataPtrs> pointersToNeighbors;
+
+	//initialize all of the neighbors to -1, indicating that the neighbors for a point haven't been found yet
+	
+
+	uint64_t cnt=0;
+	for (uint64_t i=0; i<(uint64_t)NDdataPoints.size(); i++)
+	{
+		for (uint64_t j=0; j<(uint64_t)kNN+1; j++)
+		{
+		ptr_to_neighbortable[cnt]=-1;	
+		cnt++;
+		}
+	}
+
+
+	
+	unsigned int * outputOrderedQueryPntIDs=new unsigned int[NDdataPoints.size()];
+	//Order the work based on points in each cell
+	double tstartOrderWork=omp_get_wtime();
+	computeWorkDifficulty(outputOrderedQueryPntIDs, gridCellLookupArr, &nNonEmptyCells, indexLookupArr, index);
+
+
+	//store the number of queries so we can comput the fail rate of the batch (used for increasing epsilon)
+	std::vector<unsigned int>queriesGPU;
+	queriesGPU.insert(queriesGPU.end(), &outputOrderedQueryPntIDs[0], &outputOrderedQueryPntIDs[NDdataPoints.size()]);
+
+
+
+	double tendOrderWork=omp_get_wtime();
+	double timeOrderWork=tendOrderWork - tstartOrderWork;
+	printf("\nTime to order the work: %f",timeOrderWork);
+
+	delete [] outputOrderedQueryPntIDs;
+
+	//Start join computation here
+	double tstart=omp_get_wtime();		
+
+
+	unsigned int * queriesGPUBuffer=new unsigned int[NDdataPoints.size()];
+	unsigned int * queriesIncompleteGPUBuffer=new unsigned int[NDdataPoints.size()];
+
+	//Get queries to work on from the producer rank
+	unsigned int numQueries=NDdataPoints.size();
+	
+
+	
+
+
+
+
+	int numIter=0;	
+
+	double fractionFailuresPrevIter=0;
+
+	
+	while (numQueries!=0)
+	{
+
+		CTYPE* workCounts = (CTYPE*)malloc(2*sizeof(CTYPE));
+		workCounts[0]=0;
+		workCounts[1]=0;
+
+		
+		pointersToNeighbors.clear();		
+
+	
+		///////////////////////////////////////////////
+		//Only increase epsilon if reaches threshold failures
+
+		//If not the first iteration, we re-index with the increased epsilon
+		//If the number of failures on the previous iteration is >25%
+
+		
+		if (numIter!=0 && (fractionFailuresPrevIter>0.25) )
+		{
+
+			//free previously allocated memory
+			delete [] gridCellLookupArr;
+			delete [] index;
+
+			double tstartindex=omp_get_wtime();
+			//Increase epsilon by 0.5 epsilon:
+			eps_est+=(eps_est_initial*0.5);
+
+			if(eps_est==0.0)
+			{
+				printf("\n\n******************\nError: Epsilon is 0!\nExiting.\n******************\n");
+				return;
+			}
+			
+			generateNDGridDimensions(&NDdataPoints,eps_est, minArr, maxArr, nCells, &totalCells);
+
+			//CPU Index construction- used in GPGPU paper
+			// populateNDGridIndexAndLookupArrayParallel(&NDdataPoints, eps_est, &gridCellLookupArr, &index, indexLookupArr, minArr,  nCells, totalCells, &nNonEmptyCells);
+			
+			//GPU index construction:
+			populateNDGridIndexAndLookupArrayGPU(&NDdataPoints, &eps_est, minArr, totalCells, nCells, &gridCellLookupArr, &index, indexLookupArr, &nNonEmptyCells);
+			double tendindex=omp_get_wtime();
+			printf("\nGPU: Time to reindex: %f", tendindex - tstartindex);
+		}	
+		
+		
+		
+		printf("\nIteration: %d, epsilon: %f",numIter, eps_est);
+
+
+		//End only increase if failures on previous iteration
+		/////////////////////////////////////
+
+		
+		
+		//Run GPU
+		//with pointers to windowed memory
+		//only if there are queries for the GPU
+		
+		
+		unsigned int numQueriesForFailRate=queriesGPU.size();
+
+		printf("\nNumber of GPU queries: %lu", queriesGPU.size());	
+		if (queriesGPU.size()>0)
+		{
+		double totaldisttmp=0.0; //for consistency
+		double tstartGPU=omp_get_wtime();	
+		distanceTableNDGridBatcheskNN(&NDdataPoints, ptr_to_neighbortable, outNearestNeighborTableDistances, &totaldisttmp, &queriesGPU, &eps_est, kNN, index, gridCellLookupArr, &nNonEmptyCells,  minArr, nCells, indexLookupArr, neighborTable, &pointersToNeighbors, &totalNeighbors, workCounts);	
+		double tendGPU=omp_get_wtime();
+		printf("\n[GRID] Time to compute distance table for KNN (epsilon=%f): %f,", eps_est, tendGPU - tstartGPU);
+
+		// for consistency
+		totalDistance+=totaldisttmp; 
+
+		printf("\nTotal Distance: %f", totaldisttmp);
+
+		//kNN find points with insufficient neighbors from the GPU execution (the ANN execution always finds enough neighbors)
+		double tstartprocNeighborTable=omp_get_wtime();
+		procNeighborTableForkNNUsingDirectTableGPUOnly(&NDdataPoints, kNN, &queriesGPU, ptr_to_neighbortable);
+		double tendprocNeighborTable=omp_get_wtime();
+		printf("\nTime proc queries from neighbor table (GPU only): %f", tendprocNeighborTable- tstartprocNeighborTable);
+		}
+
+		//The load imbalance may be due to the work-queue and not the CPU/GPU end times
+		//Print the time since the start that the GPU finished computing its batch
+		printf("\nGPU finished batch at: %f",omp_get_wtime()-tstart);
+
+		
+		
+		fractionFailuresPrevIter=(queriesGPU.size()*1.0)/(numQueriesForFailRate*1.0);
+		unsigned long int numGPUFailures=queriesGPU.size();
+		printf("\nNumber of GPU failures: %lu, Fraction failures: %f",numGPUFailures,fractionFailuresPrevIter);
+
+		//copy the failures to array
+		for (int x=0; x<numGPUFailures; x++){
+			queriesIncompleteGPUBuffer[x]=queriesGPU[x];
+		}
+
+
+
+		//Send the workmaster the failed queries
+		// unsigned int cntIncomplete=numGPUFailures;
+
+		
+		//get the next batch of query points:
+		queriesGPU.clear();
+
+		//XXX feed the failures back into the query set
+		queriesGPU.insert(queriesGPU.end(), &queriesIncompleteGPUBuffer[0], &queriesIncompleteGPUBuffer[numGPUFailures]);		
+
+		
+		numIter++;
+
+		//set the number of queries for the while loop
+		numQueries=numGPUFailures;
+
+
+	} //end looping over GPU queries
+
+	
+
+	double tendGPU=omp_get_wtime();
+	printf("\nFinished all GPU queries. Time: %f", tendGPU - tstart);fflush(stdout);
+
+	
+	cleanUpPinned();
+
+	double tend=omp_get_wtime();
+	printf("\nTime to join only: %f",tend-tstart);
+
+
+
+	totalTime=(tend-tstart)+timeReorderByDimVariance+timeEstEps+timeOrderWork;
+
+	
+
+
+
+	
+	printf("\n[Verification] Total distance (without sqaure root): %f",totalDistance);
+
+	//verification, check entire neighbortable
+	procNeighborTableForkNNUsingDirectTable(&NDdataPoints, kNN, &queriesGPU, ptr_to_neighbortable);
+	
+
+	double gputime=tendGPU-tstart;
+	
+	#if PRINTNEIGHBORTABLE==1
+	printNeighborTable(NDdataPoints.size(), kNN+1, ptr_to_neighbortable, outNearestNeighborTableDistances);
+	#endif
+
+
+	//for outlier detection with SNAPS
+	#if PRINTOUTLIERSCORES==1
+	printOutlierScores(NDdataPoints.size(), kNN+1, ptr_to_neighbortable, outNearestNeighborTableDistances);
+	#endif
+	
+	//Output stats to gpu_stats.txt
+	//dynamic	
+	#if THREADMULTI==-1
+	gpu_stats<<totalTime<<", KNN: "<<kNN<<nprocs<<", Eps bucket: "<<bucket<<", Total dist: "<<setprecision(9)<<
+	totalDistance<<", "<<
+	"GPUNUMDIM/NUMINDEXEDDIM/REORDER/SHORTCIRCUIT/THREADMULTI/MAXTHREADSPERPOINT/DYNAMICTHRESHOLD/STATICTHREADSPERPOINT/BETA/DTYPE(float/double): "
+	<<GPUNUMDIM<<", "<<NUMINDEXEDDIM<<", "<<REORDER<< ", "<<SHORTCIRCUIT<<", "<<THREADMULTI<<", "<<MAXTHREADSPERPOINT<<", "
+	<<DYNAMICTHRESHOLD<<", N/A, "<<BETA<<", "
+	<< STR(DTYPE)<<endl;
+	#endif
+
+	#if THREADMULTI==-2
+	gpu_stats<<totalTime<<", KNN: "<<kNN<<", Eps bucket: "<<bucket<<", Total dist: "<<setprecision(9)
+	<<totalDistance<<", "<<
+	"GPUNUMDIM/NUMINDEXEDDIM/REORDER/SHORTCIRCUIT/THREADMULTI/MAXTHREADSPERPOINT/DYNAMICTHRESHOLD/STATICTHREADSPERPOINT/BETA/DTYPE(float/double): "
+	<<GPUNUMDIM<<", "<<NUMINDEXEDDIM<<", "<<REORDER<< ", "<<SHORTCIRCUIT<<", "<<THREADMULTI<<", "<<MAXTHREADSPERPOINT<<", N/A, "<<STATICTHREADSPERPOINT<<", "
+	<<BETA<<", "
+	<<STR(DTYPE)<<endl;
+	#endif
+	gpu_stats.close();
+
+	//TESTING: Print NeighborTable:
+		//new neighbortable in arrays
+		
+	/*
+	for (int i=0; i<NDdataPoints.size(); i++)
+	{
+		printf("\nPoint id: %d, Neighbors: ",i);
+		// printf("\nPoint id: %d (coords: %f, %f), Neighbors: ",i, NDdataPoints[i][0],NDdataPoints[i][1]);
+		for (int j=0; j<kNN+1; j++){
+			printf(" ValIdx: %d, dist: %f", nearestNeighborTable[(i*(kNN+1))+j],nearestNeighborTableDistances[(i*(kNN+1))+j]);
+			// printf(" ValIdx: %u (coords: %f, %f), dist: %f", nearestNeighborTable[(i*(kNN+1))+j],NDdataPoints[nearestNeighborTable[(i*(kNN+1))+j]][0],NDdataPoints[nearestNeighborTable[(i*(kNN+1))+j]][1],nearestNeighborTableDistances[(i*(kNN+1))+j]);
+			
+		}	
+	}
+	*/
+
+	printf("\n\n");
+	return;
+
+}
+#endif
+
+
+void printNeighborTable(unsigned int databaseSize, int k_Neighbors, int * nearestNeighborTable, DTYPE * nearestNeighborTableDistances)
 {
 
 	char fname[]="KNN_out.txt";
 	ofstream KNN_out;
-	KNN_out.open(fname,ios::app);	
+	KNN_out.open(fname,ios::out);	
 
-	printf("\n\nOutputting neighbors to: %s\n\n", fname);
+	printf("\n\nOutputting neighbors to: %s\n", fname);
+	KNN_out<<"#data point (line is the point id), neighbor point ids\n";
 
 	for (unsigned int i=0; i<databaseSize; i++)
 	{
@@ -504,6 +918,142 @@ void printNeighborTable(unsigned int databaseSize, int k_Neighbors, int * neares
 	}
 
 	KNN_out.close();
+
+	char fname1[]="KNN_out_distances.txt";
+	ofstream KNN_out_distances;
+	KNN_out_distances.open(fname1, ios::out);	
+
+	printf("\nOutputting distances to: %s\n", fname1);
+	KNN_out_distances<<"#data point (line is the point id), neighbor point distances\n";
+
+	for (unsigned int i=0; i<databaseSize; i++)
+	{
+		for (int j=0; j<k_Neighbors; j++)
+		{
+			KNN_out_distances<<nearestNeighborTableDistances[i*k_Neighbors+j]<<", ";
+		}
+		KNN_out_distances<<"\n";
+	}
+
+	KNN_out_distances.close();
+}
+
+
+void printOutlierScores(unsigned int databaseSize, int k_Neighbors, int * nearestNeighborTable, DTYPE * nearestNeighborTableDistances)
+{
+
+	///////////////////
+	//Outlier criterion 1: print the mean distance to the kNN (subtract 1 from the KNN value because we exclude a point finding itself)
+
+
+	//For each point, compute the total squared distances to its k neighbors
+	DTYPE * totalDistancesPerPoint = (DTYPE *)malloc(sizeof(DTYPE)*databaseSize);
+	struct keyValPointDistStruct * keyValuePairPointIDDistance = (struct keyValPointDistStruct *)malloc(sizeof(keyValPointDistStruct)*databaseSize);
+	for (unsigned int i=0; i<databaseSize; i++)
+	{
+		DTYPE totalDistancePoint=0;
+		for (int j=0; j<k_Neighbors; j++)
+		{
+			totalDistancePoint+=nearestNeighborTableDistances[i*k_Neighbors+j];
+		}
+		
+		totalDistancesPerPoint[i]=totalDistancePoint;
+		//for sorting key/value pairs
+		keyValuePairPointIDDistance[i].pointID=i;
+		keyValuePairPointIDDistance[i].distance=totalDistancePoint;
+		
+		
+	}
+
+	//sort the point IDs and values by key/value pair
+	std::sort(keyValuePairPointIDDistance, keyValuePairPointIDDistance+databaseSize, compareByPointValue);
+	
+	//store the scores for each point in an array that will be printed
+	int * outlierScoreArr=(int *)malloc(sizeof(int)*databaseSize);
+
+	for(int i=0; i<databaseSize; i++)
+	{
+		int pointId=keyValuePairPointIDDistance[i].pointID;
+		outlierScoreArr[pointId]=i;
+	}
+
+	//end outlier criterion 1
+	///////////////////
+
+	///////////////////
+	//Outlier criterion 2: find the number of times a given point appears in another point's set
+	//This can be thought of as exploiting the KNN graph
+
+
+	//For each point, compute the number of times it appears in another KNN set (don't exclude a point finding itself, since all points find themselves)
+	uint64_t * totalTimePointInOtherSet = (uint64_t *)malloc(sizeof(uint64_t)*databaseSize);
+	struct keyValPointFrequencyKNNGraphStruct * keyValuePairPointIDFrequencyInSets = (struct keyValPointFrequencyKNNGraphStruct *)malloc(sizeof(keyValPointFrequencyKNNGraphStruct)*databaseSize);
+	
+	//initialize the struct and the array of counts for each object
+	for (unsigned int i=0; i<databaseSize; i++)
+	{
+		keyValuePairPointIDFrequencyInSets[i].pointID=i;
+		keyValuePairPointIDFrequencyInSets[i].numTimesInOtherSet=0;
+		totalTimePointInOtherSet[i]=0;
+	}
+
+
+
+	for (unsigned int i=0; i<databaseSize; i++)
+	{
+		
+		for (int j=0; j<k_Neighbors; j++)
+		{
+			unsigned int idx=nearestNeighborTable[i*k_Neighbors+j];
+			keyValuePairPointIDFrequencyInSets[idx].numTimesInOtherSet++; //this will be sorted
+			totalTimePointInOtherSet[idx]++; //this will not be sorted
+
+		}
+	}
+
+	//sort the point IDs and values by key/value pair
+	std::sort(keyValuePairPointIDFrequencyInSets, keyValuePairPointIDFrequencyInSets+databaseSize, compareByPointFrequencyInOtherSets);
+	
+	//store the scores (rankings) for each point in an array that will be printed
+	unsigned int * outlierScoreFrequencyArr=(unsigned int *)malloc(sizeof(unsigned int)*databaseSize);
+
+	for(int i=0; i<databaseSize; i++)
+	{
+		int pointId=keyValuePairPointIDFrequencyInSets[i].pointID;
+		outlierScoreFrequencyArr[pointId]=i;
+	}
+
+	//end outlier criterion 2
+	///////////////////
+
+	//print to file for each point: its sum of distances to all points and its outlier ranking
+	
+	char fname[]="KNN_outlier_scores.txt";
+	ofstream KNN_out;
+	KNN_out.open(fname, ios::out);	
+
+	printf("\nOutputting outlier scores to: %s\n", fname);
+	KNN_out<<"#data point (line is the point id), col0: mean distance between point and its k neighbors,";
+	KNN_out<<"col1: outlier ranking for col0, col2: the number of times the point appears in another set (in-degree), col3: the ranking for col2 \n";
+
+	for(int i=0; i<databaseSize; i++)
+	{
+		KNN_out<<totalDistancesPerPoint[i]/((k_Neighbors*1.0)-1.0)<<", "<<outlierScoreArr[i]<<", "<<totalTimePointInOtherSet[i]<<", "<<outlierScoreFrequencyArr[i]<<endl;
+	}
+
+	KNN_out.close();
+
+	//free all memory allocated in this function
+	//criterion 1
+	free(outlierScoreArr);
+	free(totalDistancesPerPoint);
+	free(keyValuePairPointIDDistance);
+	//criterion 2
+	free(outlierScoreFrequencyArr);
+	free(keyValuePairPointIDFrequencyInSets);
+	free(totalTimePointInOtherSet);
+	
+
 }
 
 //find if neighbortable has at least k neighbors for each point
