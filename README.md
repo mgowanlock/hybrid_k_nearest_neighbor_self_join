@@ -1,6 +1,6 @@
 # Overview: Hybrid CPU+GPU k-nearest-neighbor self-join algorithm
 
-**Update: Instructions for using the Python wrapper are below**
+**Update: Instructions for using the Python wrapper are found at the bottom of the readme.**
 
 This is the GPU *k*-nearest neighbor (KNN) self-join implementation reported in Gowanlock (2021) (paper reference below). The KNN self-join takes as input a dataset, and finds the KNN for all points in the dataset. This algorithm is designed for low to moderate dimensionality (i.e., 2-8 dimensions).
 
