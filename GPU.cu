@@ -1559,7 +1559,7 @@ void distanceTableNDGridBatcheskNN(std::vector<std::vector<DTYPE> > * NDdataPoin
 			}
 			else{
 				printf("\nGPU: result set size within epsilon (GPU grid): %d",cnt[tid]);cout.flush();
-				fprintf(stderr,"\nGPU: result set size within epsilon (GPU grid): %d",cnt[tid]);
+				// fprintf(stderr,"\nGPU: result set size within epsilon (GPU grid): %d",cnt[tid]);
 			}
 
 
@@ -1820,6 +1820,7 @@ void distanceTableNDGridBatcheskNN(std::vector<std::vector<DTYPE> > * NDdataPoin
 
 
 	//free on the heap
+	
 	free(DBSIZE);
 	free(database);
 	free(queryPts);
@@ -1831,7 +1832,7 @@ void distanceTableNDGridBatcheskNN(std::vector<std::vector<DTYPE> > * NDdataPoin
 	free(batchNumber);
 	free(debug1);
 	free(debug2);
-
+	
 
 
 	//free the data on the device

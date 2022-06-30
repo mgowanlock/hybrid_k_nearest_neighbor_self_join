@@ -53,6 +53,7 @@ $(EXECUTABLE): $(OBJECTS) $(CUDAOBJECTS)
 #Make python shared library
 
 PYTHONFLAGS= -Xcompiler -fPIC --shared -DPYTHON
+PYTHONFLAGSGNUCC= -fPIC --shared -DPYTHON
 
 #Update the parameters file with the makefile to set the number of dimensions
 #the parameters below will overwrite the params.h file
@@ -68,7 +69,7 @@ MAKEDIMINDEXED = 2
 make_python_shared_lib: 
 	sed -i "s/#define GPUNUMDIM.*/#define GPUNUMDIM $(MAKEDIMDATA)/g" params.h
 	sed -i "s/#define NUMINDEXEDDIM.*/#define NUMINDEXEDDIM $(MAKEDIMINDEXED)/g" params.h
-	$(GNUCC) -O3 $(CFLAGS) par_sort.cpp
+	$(GNUCC) $(PYTHONFLAGSGNUCC) $(CFLAGS) par_sort.cpp
 	$(CC) $(PYTHONFLAGS) $(FLAGS) $(CFLAGS) $(COMPUTE_CAPABILITY_FLAGS) GPU.cu
 	$(CC) $(PYTHONFLAGS) $(FLAGS) $(CFLAGS) $(COMPUTE_CAPABILITY_FLAGS) kernel.cu
 	$(CC) $(PYTHONFLAGS) $(FLAGS) $(CFLAGS) $(COMPUTE_CAPABILITY_FLAGS) main.cu

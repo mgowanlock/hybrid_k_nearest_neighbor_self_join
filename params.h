@@ -5,8 +5,8 @@
 #define DTYPE float
 
 //Set both of these to the number of dimensions
-#define GPUNUMDIM 2
-#define NUMINDEXEDDIM 2
+#define GPUNUMDIM 100
+#define NUMINDEXEDDIM 6
 
 //This stores the points within the distance of each query for multiple streams
 //If your GPU has a memory allocation error, it's likely that this value needs to be decreased to allow
@@ -29,10 +29,10 @@
 
 #define GPUSTREAMS 3 //number of concurrent gpu streams (GPUBUFFERSIZE) is allocated for each stream
 
-#define SHORTCIRCUIT 0
+#define SHORTCIRCUIT 1
  
  
-#define REORDER 0 //This reorders the data by dimensionality
+#define REORDER 1 //This reorders the data by dimensionality
 
 
 #define THREADMULTI -2 //0- just use 1 thread for distance calculations per query point

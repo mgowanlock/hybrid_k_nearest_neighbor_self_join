@@ -529,6 +529,12 @@ extern "C" void KNNJoinPy(DTYPE * dataset, unsigned int NUMPOINTS, unsigned int 
 		return;
 	}
 
+	// fprintf(stderr, "\n************************");
+	// fprintf(stderr, "Python parameters to shared library\n");
+	// fprintf(stderr, "Number of points: %d\n", NUMPOINTS);
+	// fprintf(stderr, "kNN: %d\n", kNN);
+	// fprintf(stderr, "NDIM: %d\n", NDIM);
+	// fprintf(stderr, "************************\n");
 	
 
 	//////////////////////////////
@@ -822,7 +828,11 @@ extern "C" void KNNJoinPy(DTYPE * dataset, unsigned int NUMPOINTS, unsigned int 
 	printf("\nFinished all GPU queries. Time: %f", tendGPU - tstart);fflush(stdout);
 
 	
+	//Comment cleaning up pinned in the Python implementation because
+	//we call the shared library numerous times
+	#ifndef PYTHON
 	cleanUpPinned();
+	#endif
 
 	double tend=omp_get_wtime();
 	printf("\nTime to join only: %f",tend-tstart);
