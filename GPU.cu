@@ -18,8 +18,9 @@
 #include <thrust/device_vector.h>
 #include <thrust/sort.h>
 #include <thrust/device_ptr.h>
-#include <thrust/system/cuda/execution_policy.h> //for streams for thrust (added with Thrust v1.8)
-
+// #include <thrust/system/cuda/execution_policy.h> 
+#include <thrust/execution_policy.h>
+#include <thrust/unique.h>
 
 
 //for warming up GPU:
@@ -81,10 +82,10 @@ bool compareByFirstDataDim(const databaseSortMap &a, const databaseSortMap &b)
 //out_epsilon- the value of epsilon computed to be used
 //dev_epsilon pointer to allocated epsilon for executing the estimator kernel
 //fracDB- fraction of the total points going to be processed
-unsigned long long callGPUBatchEst(unsigned int * DBSIZE, unsigned int N_QueryPts, unsigned int * dev_queryPts, unsigned int k_Neighbors, DTYPE* dev_database,
-  DTYPE* in_epsilon, DTYPE* dev_epsilon, struct grid * dev_grid, 
+unsigned long long GPUBatchEst(unsigned int * DBSIZE, unsigned int N_QueryPts, unsigned int * dev_queryPts, unsigned int k_Neighbors, DTYPE* dev_database,
+  const DTYPE epsilon, struct grid * dev_grid, 
 	unsigned int * dev_indexLookupArr, struct gridCellLookup * dev_gridCellLookupArr, DTYPE* dev_minArr, 
-	unsigned int * dev_nCells, unsigned int * dev_nNonEmptyCells, unsigned int * retNumBatches, unsigned int * retGPUBufferSize)
+	unsigned int * dev_nCells, const unsigned int nNonEmptyCells, unsigned int * retNumBatches, unsigned int * retGPUBufferSize)
 {
 
 
@@ -417,8 +418,8 @@ unsigned long long callGPUBatchEst(unsigned int * DBSIZE, unsigned int N_QueryPt
 	// unsigned int * nNonEmptyCells)
 
 	kernelNDGridIndexBatchEstimatorQuerySet<<< TOTALBLOCKSBATCHEST, BLOCKSIZE>>>(dev_debug1, dev_debug2, dev_threadsForDistanceCalc, dev_queryPts, dev_N_batchEst, 
-		dev_sampleOffset, dev_database, dev_epsilon, dev_grid, dev_indexLookupArr, 
-		dev_gridCellLookupArr, dev_minArr, dev_nCells, dev_cnt_batchEst, dev_nNonEmptyCells);
+		dev_sampleOffset, dev_database, epsilon, dev_grid, dev_indexLookupArr, 
+		dev_gridCellLookupArr, dev_minArr, dev_nCells, dev_cnt_batchEst, nNonEmptyCells);
 		// kernelNDGridIndexBatchEstimatorWithExpansion<<< TOTALBLOCKSBATCHEST, BLOCKSIZE>>>(dev_debug1, dev_debug2, dev_queryPts, dev_iteration, dev_N_batchEst, 
 		// dev_sampleOffset, dev_database, dev_epsilon, dev_grid, dev_indexLookupArr, 
 		// dev_gridCellLookupArr, dev_minArr, dev_nCells, dev_cnt_batchEst, dev_nNonEmptyCells, dev_gridCellNDMask, 
@@ -563,8 +564,8 @@ return estimatedTotalSizeWithAlpha;
 //Iter is the number of times the function was called -- controls the number of cells searched around the query point
 void distanceTableNDGridBatcheskNN(std::vector<std::vector<DTYPE> > * NDdataPoints, int * nearestNeighborTable, 
 	DTYPE * nearestNeighborTableDistances,  double * totaldistance, 
-	std::vector<unsigned int> *queryPtsVect, DTYPE* epsilon,  unsigned int k_neighbors, struct grid * index, 
-	struct gridCellLookup * gridCellLookupArr, unsigned int * nNonEmptyCells, DTYPE* minArr, unsigned int * nCells, 
+	std::vector<unsigned int> *queryPtsVect, DTYPE epsilon,  unsigned int k_neighbors, struct grid * index, 
+	struct gridCellLookup * gridCellLookupArr, const unsigned int nNonEmptyCells, DTYPE* minArr, unsigned int * nCells, 
 	unsigned int * indexLookupArr, struct neighborTableLookup * neighborTable, std::vector<struct neighborDataPtrs> * pointersToNeighbors, 
 	uint64_t * totalNeighbors, CTYPE* workCounts)
 {
@@ -585,21 +586,21 @@ void distanceTableNDGridBatcheskNN(std::vector<std::vector<DTYPE> > * NDdataPoin
 	//COPY THE kNN TO THE GPU
 	///////////////////////////////////
 
-	unsigned int * dev_k_neighbors;
+	// unsigned int * dev_k_neighbors;
 	
 		
 	
-	//allocate memory on device:
-	errCode=cudaMalloc( (void**)&dev_k_neighbors, sizeof(unsigned int));		
-	if(errCode != cudaSuccess) {
-	cout << "\nError: k_neighbors alloc -- error with code " << errCode << endl; cout.flush(); 
-	}
+	// //allocate memory on device:
+	// errCode=cudaMalloc( (void**)&dev_k_neighbors, sizeof(unsigned int));		
+	// if(errCode != cudaSuccess) {
+	// cout << "\nError: k_neighbors alloc -- error with code " << errCode << endl; cout.flush(); 
+	// }
 
-	//copy to the device
-	errCode=cudaMemcpy(dev_k_neighbors, &k_neighbors, sizeof(unsigned int), cudaMemcpyHostToDevice);	
-	if(errCode != cudaSuccess) {
-	cout << "\nError: k_neighbirs Got error with code " << errCode << endl; 
-	}	
+	// //copy to the device
+	// errCode=cudaMemcpy(dev_k_neighbors, &k_neighbors, sizeof(unsigned int), cudaMemcpyHostToDevice);	
+	// if(errCode != cudaSuccess) {
+	// cout << "\nError: k_neighbirs Got error with code " << errCode << endl; 
+	// }	
 		
 
 
@@ -734,19 +735,19 @@ void distanceTableNDGridBatcheskNN(std::vector<std::vector<DTYPE> > * NDdataPoin
 	// dev_grid=(struct grid*)malloc(sizeof(struct grid)*(*nNonEmptyCells));
 
 	//allocate memory on device:
-	errCode=cudaMalloc( (void**)&dev_grid, sizeof(struct grid)*(*nNonEmptyCells));	
+	errCode=cudaMalloc( (void**)&dev_grid, sizeof(struct grid)*nNonEmptyCells);	
 	if(errCode != cudaSuccess) {
 	cout << "\nError: grid index -- error with code " << errCode << endl; cout.flush(); 
 	}
 
 
 	//copy grid index to the device:
-	errCode=cudaMemcpy(dev_grid, index, sizeof(struct grid)*(*nNonEmptyCells), cudaMemcpyHostToDevice);	
+	errCode=cudaMemcpy(dev_grid, index, sizeof(struct grid)*nNonEmptyCells, cudaMemcpyHostToDevice);	
 	if(errCode != cudaSuccess) {
 	cout << "\nError: grid index copy to device -- error with code " << errCode << endl; 
 	}	
 
-	printf("\nSize of index sent to GPU (MiB): %f", (DTYPE)sizeof(struct grid)*(*nNonEmptyCells)/(1024.0*1024.0));
+	printf("\nSize of index sent to GPU (MiB): %f", (DTYPE)sizeof(struct grid)*nNonEmptyCells/(1024.0*1024.0));
 
 
 	///////////////////////////////////
@@ -772,7 +773,7 @@ void distanceTableNDGridBatcheskNN(std::vector<std::vector<DTYPE> > * NDdataPoin
 	if(GPUNUMDIM > NUMINDEXEDDIM)
 		sortDim = NUMINDEXEDDIM;
 
-	for (int i=0; i<(*nNonEmptyCells); i++)
+	for (int i=0; i<nNonEmptyCells; i++)
 	// for (int i=0; i<1; i++)
 	{
 		// if(index[i].indexmin < index[i].indexmax){
@@ -846,13 +847,13 @@ void distanceTableNDGridBatcheskNN(std::vector<std::vector<DTYPE> > * NDdataPoin
 	// dev_gridCellLookupArr=(struct gridCellLookup*)malloc(sizeof(struct gridCellLookup)*(*nNonEmptyCells));
 
 	//allocate memory on device:
-	errCode=cudaMalloc( (void**)&dev_gridCellLookupArr, sizeof(struct gridCellLookup)*(*nNonEmptyCells));
+	errCode=cudaMalloc( (void**)&dev_gridCellLookupArr, sizeof(struct gridCellLookup)*nNonEmptyCells);
 	if(errCode != cudaSuccess) {
 	cout << "\nError: copy grid cell lookup array allocation -- error with code " << errCode << endl; cout.flush(); 
 	}
 
 	//copy lookup array to the device:
-	errCode=cudaMemcpy(dev_gridCellLookupArr, gridCellLookupArr, sizeof(struct gridCellLookup)*(*nNonEmptyCells), cudaMemcpyHostToDevice);	
+	errCode=cudaMemcpy(dev_gridCellLookupArr, gridCellLookupArr, sizeof(struct gridCellLookup)*nNonEmptyCells, cudaMemcpyHostToDevice);	
 	if(errCode != cudaSuccess) {
 	cout << "\nError: copy grid cell lookup array to device -- error with code " << errCode << endl; 
 	}	
@@ -948,32 +949,33 @@ void distanceTableNDGridBatcheskNN(std::vector<std::vector<DTYPE> > * NDdataPoin
 	//Copy the "threads per distance calculation" to the GPU 
 	/////////////////////////////////
 
-	unsigned int * threadsForDistanceCalc=(unsigned int *)malloc(sizeof(unsigned int));
+	// unsigned int * threadsForDistanceCalc=(unsigned int *)malloc(sizeof(unsigned int));
+	unsigned int threadsForDistanceCalc=1;
 	#if THREADMULTI==0
-	*threadsForDistanceCalc=1;
+	threadsForDistanceCalc=1;
 	#endif
 
 
 	//static
 	#if THREADMULTI==-2
-	*threadsForDistanceCalc=STATICTHREADSPERPOINT;
+	threadsForDistanceCalc=STATICTHREADSPERPOINT;
 	#endif
 
 	
 
-	unsigned int * dev_threadsForDistanceCalc;
+	// unsigned int * dev_threadsForDistanceCalc;
 
-	//allocate memory on device:
-	errCode=cudaMalloc( (void**)&dev_threadsForDistanceCalc, sizeof(unsigned int));		
-	if(errCode != cudaSuccess) {
-	cout << "\nError: threadsForDistanceCalc alloc -- error with code " << errCode << endl; cout.flush(); 
-	}
+	// //allocate memory on device:
+	// errCode=cudaMalloc( (void**)&dev_threadsForDistanceCalc, sizeof(unsigned int));		
+	// if(errCode != cudaSuccess) {
+	// cout << "\nError: threadsForDistanceCalc alloc -- error with code " << errCode << endl; cout.flush(); 
+	// }
 
-	//copy threads to the device
-	errCode=cudaMemcpy(dev_threadsForDistanceCalc, threadsForDistanceCalc, sizeof(unsigned int), cudaMemcpyHostToDevice);	
-	if(errCode != cudaSuccess) {
-	cout << "\nError: threadsForDistanceCalc Got error with code " << errCode << endl; 
-	}
+	// //copy threads to the device
+	// errCode=cudaMemcpy(dev_threadsForDistanceCalc, threadsForDistanceCalc, sizeof(unsigned int), cudaMemcpyHostToDevice);	
+	// if(errCode != cudaSuccess) {
+	// cout << "\nError: threadsForDistanceCalc Got error with code " << errCode << endl; 
+	// }
 
 
 	//////////////////////////////////
@@ -986,21 +988,21 @@ void distanceTableNDGridBatcheskNN(std::vector<std::vector<DTYPE> > * NDdataPoin
 	///////////////////////////////////
 	//EPSILON
 	///////////////////////////////////
-	DTYPE* dev_epsilon;
+	// DTYPE* dev_epsilon;
 	// dev_epsilon=(DTYPE*)malloc(sizeof( DTYPE));
 	
 
-	//Allocate on the device
-	errCode=cudaMalloc((void**)&dev_epsilon, sizeof(DTYPE));
-	if(errCode != cudaSuccess) {
-	cout << "\nError: Alloc epsilon -- error with code " << errCode << endl; 
-	}
+	// //Allocate on the device
+	// errCode=cudaMalloc((void**)&dev_epsilon, sizeof(DTYPE));
+	// if(errCode != cudaSuccess) {
+	// cout << "\nError: Alloc epsilon -- error with code " << errCode << endl; 
+	// }
 
-	//copy to device
-	errCode=cudaMemcpy( dev_epsilon, epsilon, sizeof(DTYPE), cudaMemcpyHostToDevice );
-	if(errCode != cudaSuccess) {
-	cout << "\nError: epsilon copy to device -- error with code " << errCode << endl; 
-	}		
+	// //copy to device
+	// errCode=cudaMemcpy( dev_epsilon, epsilon, sizeof(DTYPE), cudaMemcpyHostToDevice );
+	// if(errCode != cudaSuccess) {
+	// cout << "\nError: epsilon copy to device -- error with code " << errCode << endl; 
+	// }		
 
 
 
@@ -1012,22 +1014,22 @@ void distanceTableNDGridBatcheskNN(std::vector<std::vector<DTYPE> > * NDdataPoin
 	///////////////////////////////////
 	//NUMBER OF NON-EMPTY CELLS
 	///////////////////////////////////
-	unsigned int * dev_nNonEmptyCells;
+	// unsigned int * dev_nNonEmptyCells;
 	// dev_nNonEmptyCells=(unsigned int*)malloc(sizeof( unsigned int ));
 	
 
 
 	//Allocate on the device
-	errCode=cudaMalloc((void**)&dev_nNonEmptyCells, sizeof(unsigned int));
-	if(errCode != cudaSuccess) {
-	cout << "\nError: Alloc nNonEmptyCells -- error with code " << errCode << endl; 
-	}
+	// errCode=cudaMalloc((void**)&dev_nNonEmptyCells, sizeof(unsigned int));
+	// if(errCode != cudaSuccess) {
+	// cout << "\nError: Alloc nNonEmptyCells -- error with code " << errCode << endl; 
+	// }
 
-	//copy to device
-	errCode=cudaMemcpy( dev_nNonEmptyCells, nNonEmptyCells, sizeof(unsigned int), cudaMemcpyHostToDevice );
-	if(errCode != cudaSuccess) {
-	cout << "\nError: nNonEmptyCells copy to device -- error with code " << errCode << endl; 
-	}		
+	// //copy to device
+	// errCode=cudaMemcpy( dev_nNonEmptyCells, nNonEmptyCells, sizeof(unsigned int), cudaMemcpyHostToDevice );
+	// if(errCode != cudaSuccess) {
+	// cout << "\nError: nNonEmptyCells copy to device -- error with code " << errCode << endl; 
+	// }		
 
 	///////////////////////////////////
 	//NUMBER OF NON-EMPTY CELLS
@@ -1111,7 +1113,9 @@ void distanceTableNDGridBatcheskNN(std::vector<std::vector<DTYPE> > * NDdataPoin
 	//we compute the fraction of the total dataset processed
 	//so that we don't overallocate the number of batches
 	// double fracDB=(*QUERYSIZE*1.0)/(*DBSIZE*1.0);
-	estimatedNeighbors=callGPUBatchEst(DBSIZE, *QUERYSIZE, dev_queryPts, k_neighbors, dev_database, epsilon, dev_epsilon, dev_grid, dev_indexLookupArr,dev_gridCellLookupArr, dev_minArr, dev_nCells, dev_nNonEmptyCells, &numBatches, &GPUBufferSize);	
+
+	//in_epsilon and dev_epsilon
+	estimatedNeighbors=GPUBatchEst(DBSIZE, *QUERYSIZE, dev_queryPts, k_neighbors, dev_database, epsilon, dev_grid, dev_indexLookupArr,dev_gridCellLookupArr, dev_minArr, dev_nCells, nNonEmptyCells, &numBatches, &GPUBufferSize);	
 	double tendbatchest=omp_get_wtime();
 	printf("\nTime to estimate batches: %f",tendbatchest - tstartbatchest);
 	printf("\nIn Calling fn: Estimated neighbors: %llu, num. batches: %d, GPU Buffer size: %d",estimatedNeighbors, numBatches,GPUBufferSize);
@@ -1136,20 +1140,20 @@ void distanceTableNDGridBatcheskNN(std::vector<std::vector<DTYPE> > * NDdataPoin
 	#if THREADMULTI==-1
 	unsigned int pointsPerBatch=ceil((*QUERYSIZE*1.0)/(numBatches*1.0));
 	printf("\n[THREADMULTI==-1 (Dynamic)] *QUERYSIZE: %u, numBatches: %u", *QUERYSIZE, numBatches);
-	*threadsForDistanceCalc=ceil((DYNAMICTHRESHOLD*1.0)/(pointsPerBatch*1.0));
+	threadsForDistanceCalc=ceil((DYNAMICTHRESHOLD*1.0)/(pointsPerBatch*1.0));
 	
 	//make sure that the number of threads per point doesn't exceed the maximum allowable (to prevent 1 thread with thousands of threads)	
-	*threadsForDistanceCalc=min(MAXTHREADSPERPOINT,*threadsForDistanceCalc);
-	printf("\n[THREADMULTI==-1 (Dynamic)] Points per batch: %u, Threads Per Point: %u",pointsPerBatch, *threadsForDistanceCalc);
+	threadsForDistanceCalc=min(MAXTHREADSPERPOINT,threadsForDistanceCalc);
+	printf("\n[THREADMULTI==-1 (Dynamic)] Points per batch: %u, Threads Per Point: %u",pointsPerBatch, threadsForDistanceCalc);
 
 
 
 	//copy threads to the device
 
-	errCode=cudaMemcpy(dev_threadsForDistanceCalc, threadsForDistanceCalc, sizeof(unsigned int), cudaMemcpyHostToDevice);	
-	if(errCode != cudaSuccess) {
-	cout << "\nError: threadsForDistanceCalc Got error with code " << errCode << endl; 
-	}
+	// errCode=cudaMemcpy(dev_threadsForDistanceCalc, threadsForDistanceCalc, sizeof(unsigned int), cudaMemcpyHostToDevice);	
+	// if(errCode != cudaSuccess) {
+	// cout << "\nError: threadsForDistanceCalc Got error with code " << errCode << endl; 
+	// }
 
 	#endif
 	
@@ -1160,7 +1164,7 @@ void distanceTableNDGridBatcheskNN(std::vector<std::vector<DTYPE> > * NDdataPoin
 	
 	//this prints for all threads per point schemes
 	//put here once instead of each time
-	printf("\nThreads for distance calculations: %u", *threadsForDistanceCalc);
+	printf("\nThreads for distance calculations: %u", threadsForDistanceCalc);
 
 	////////////////////////////////////
 	//TWO DEBUG VALUES SENT TO THE GPU FOR GOOD MEASURE
@@ -1481,10 +1485,10 @@ void distanceTableNDGridBatcheskNN(std::vector<std::vector<DTYPE> > * NDdataPoin
 			
 			//copy N to device 
 			//N IS THE NUMBER OF THREADS
-			errCode=cudaMemcpyAsync( &dev_N[tid], &N[tid], sizeof(unsigned int), cudaMemcpyHostToDevice, stream[tid] );
-			if(errCode != cudaSuccess) {
-			cout << "\nError: N Got error with code " << errCode << endl; 
-			}
+			// errCode=cudaMemcpyAsync( &dev_N[tid], &N[tid], sizeof(unsigned int), cudaMemcpyHostToDevice, stream[tid] );
+			// if(errCode != cudaSuccess) {
+			// cout << "\nError: N Got error with code " << errCode << endl; 
+			// }
 
 			//the batched result set size (reset to 0):
 			cnt[tid]=0;
@@ -1495,17 +1499,17 @@ void distanceTableNDGridBatcheskNN(std::vector<std::vector<DTYPE> > * NDdataPoin
 
 			//the offset for batching, which keeps track of where to start processing at each batch
 			batchOffset[tid]=numBatches; //for the strided
-			errCode=cudaMemcpyAsync( &dev_offset[tid], &batchOffset[tid], sizeof(unsigned int), cudaMemcpyHostToDevice, stream[tid] );
-			if(errCode != cudaSuccess) {
-			cout << "\nError: dev_offset memcpy Got error with code " << errCode << endl; 
-			}
+			// errCode=cudaMemcpyAsync( &dev_offset[tid], &batchOffset[tid], sizeof(unsigned int), cudaMemcpyHostToDevice, stream[tid] );
+			// if(errCode != cudaSuccess) {
+			// cout << "\nError: dev_offset memcpy Got error with code " << errCode << endl; 
+			// }
 
 			//the batch number for batching with strided
 			batchNumber[tid]=i;
-			errCode=cudaMemcpyAsync( &dev_batchNumber[tid], &batchNumber[tid], sizeof(unsigned int), cudaMemcpyHostToDevice, stream[tid] );
-			if(errCode != cudaSuccess) {
-			cout << "\nError: dev_batchNumber memcpy Got error with code " << errCode << endl; 
-			}
+			// errCode=cudaMemcpyAsync( &dev_batchNumber[tid], &batchNumber[tid], sizeof(unsigned int), cudaMemcpyHostToDevice, stream[tid] );
+			// if(errCode != cudaSuccess) {
+			// cout << "\nError: dev_batchNumber memcpy Got error with code " << errCode << endl; 
+			// }
 
 			#if THREADMULTI==0
 			const int TOTALBLOCKS=ceil((1.0*(N[tid]))/(1.0*BLOCKSIZE));	
@@ -1522,23 +1526,23 @@ void distanceTableNDGridBatcheskNN(std::vector<std::vector<DTYPE> > * NDdataPoin
 			//number of threads per point
 			//dynamic (-1) or static (-2)
 			#if THREADMULTI==-1 || THREADMULTI==-2
-			const int TOTALBLOCKS=ceil((1.0*(N[tid])*(*threadsForDistanceCalc))/(1.0*BLOCKSIZE));	
+			const int TOTALBLOCKS=ceil((1.0*(N[tid])*threadsForDistanceCalc)/(1.0*BLOCKSIZE));	
 			
 				#if THREADMULTI==-1
-				printf("\ntotal blocks (THREADMULTI DYNAMIC, ThreadsPerPoint: %u, for more distance calculation threads per query point per iteration): %d",*threadsForDistanceCalc, TOTALBLOCKS);
+				printf("\ntotal blocks (THREADMULTI DYNAMIC, ThreadsPerPoint: %u, for more distance calculation threads per query point per iteration): %d",threadsForDistanceCalc, TOTALBLOCKS);
 				#endif
 
 				#if THREADMULTI==-2
-				printf("\ntotal blocks (THREADMULTI STATIC, ThreadsPerPoint: %u, for more distance calculation threads per query point per iteration): %d",*threadsForDistanceCalc, TOTALBLOCKS);
+				printf("\ntotal blocks (THREADMULTI STATIC, ThreadsPerPoint: %u, for more distance calculation threads per query point per iteration): %d",threadsForDistanceCalc, TOTALBLOCKS);
 				#endif
 
 			#endif
 
 			//execute kernel -- normal kernel that gets executed using an index	
 			//0 is shared memory pool
-			kernelNDGridIndexGlobalkNN<<< TOTALBLOCKS, BLOCKSIZE, 0, stream[tid]>>>(dev_debug1, dev_debug2, dev_k_neighbors, &dev_N[tid], 
-			&dev_offset[tid], &dev_batchNumber[tid], dev_database, dev_epsilon, dev_grid, dev_indexLookupArr, 
-			dev_gridCellLookupArr, dev_minArr, dev_nCells, &dev_cnt[tid], dev_nNonEmptyCells, dev_pointIDKey[tid], dev_pointInDistValue[tid], dev_distancesKeyValue[tid], dev_queryPts, dev_threadsForDistanceCalc, dev_workCounts);
+			kernelNDGridIndexGlobalkNN<<< TOTALBLOCKS, BLOCKSIZE, 0, stream[tid]>>>(N[tid], 
+			batchOffset[tid], batchNumber[tid], dev_database, epsilon, dev_grid, dev_indexLookupArr, 
+			dev_gridCellLookupArr, dev_minArr, dev_nCells, &dev_cnt[tid], nNonEmptyCells, dev_pointIDKey[tid], dev_pointInDistValue[tid], dev_distancesKeyValue[tid], dev_queryPts, threadsForDistanceCalc, dev_workCounts);
 
 
 			// errCode=cudaDeviceSynchronize();
@@ -1826,7 +1830,7 @@ void distanceTableNDGridBatcheskNN(std::vector<std::vector<DTYPE> > * NDdataPoin
 	free(queryPts);
 	free(totalResultSetCnt);
 	free(cnt);
-	free(threadsForDistanceCalc);
+	// free(threadsForDistanceCalc);
 	free(N);
 	free(batchOffset);
 	free(batchNumber);
@@ -1844,18 +1848,18 @@ void distanceTableNDGridBatcheskNN(std::vector<std::vector<DTYPE> > * NDdataPoin
 	cudaFree(dev_database);
 	cudaFree(dev_debug1);
 	cudaFree(dev_debug2);
-	cudaFree(dev_epsilon);
+	// cudaFree(dev_epsilon);
 	cudaFree(dev_grid);
 	cudaFree(dev_gridCellLookupArr);
 	cudaFree(dev_indexLookupArr);
 	cudaFree(dev_minArr);
 	cudaFree(dev_nCells);
-	cudaFree(dev_nNonEmptyCells);
+	// cudaFree(dev_nNonEmptyCells);
 	cudaFree(dev_N); 	
 	cudaFree(dev_cnt); 
 	cudaFree(dev_offset); 
 	cudaFree(dev_batchNumber); 
-	cudaFree(dev_threadsForDistanceCalc);
+	// cudaFree(dev_threadsForDistanceCalc);
 	cudaFree(dev_queryPts);
 	cudaFree(dev_workCounts);
 	

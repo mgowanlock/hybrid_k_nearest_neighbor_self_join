@@ -39,9 +39,9 @@ __global__ void kernelNDGridIndexBatchEstimatorWithExpansion(unsigned int *debug
 
 //same as the original but with a query set
 __global__ void kernelNDGridIndexBatchEstimatorQuerySet(unsigned int *debug1, unsigned int *debug2, unsigned int * threadsForDistanceCalc, unsigned int * queryPts,unsigned int *N,  
-	unsigned int * sampleOffset, DTYPE* database, DTYPE* epsilon, struct grid * index, unsigned int * indexLookupArr, 
+	unsigned int * sampleOffset, DTYPE* database, const DTYPE epsilon, struct grid * index, unsigned int * indexLookupArr, 
 	struct gridCellLookup * gridCellLookupArr, DTYPE* minArr, unsigned int * nCells, unsigned int * cnt, 
-	unsigned int * nNonEmptyCells);
+	const unsigned int nNonEmptyCells);
 
 // __global__ void kernelNDGridIndexGlobalkNN(unsigned int *debug1, unsigned int *debug2, unsigned int *N,  
 // 	unsigned int * offset, unsigned int *batchNum, DTYPE * database, DTYPE *epsilon, struct grid * index, unsigned int * indexLookupArr, 
@@ -56,10 +56,10 @@ __global__ void kernelNDGridIndexBatchEstimatorQuerySet(unsigned int *debug1, un
 // 	int * pointIDKey, int * pointInDistVal, DTYPE * distancesKeyVal, unsigned int * queryPts, unsigned int * threadsForDistanceCalc, CTYPE* workCounts);
 
 
-__global__ void kernelNDGridIndexGlobalkNN(unsigned int *debug1, unsigned int *debug2, unsigned int * k_neighbors, unsigned int *N,  
-	unsigned int * offset, unsigned int *batchNum, DTYPE* database, DTYPE* epsilon, struct grid * index, unsigned int * indexLookupArr, 
+__global__ void kernelNDGridIndexGlobalkNN(const unsigned int N,  
+	const unsigned int offset, const unsigned int batchNum, DTYPE* database, const DTYPE epsilon, struct grid * index, unsigned int * indexLookupArr, 
 	struct gridCellLookup * gridCellLookupArr, DTYPE* minArr, unsigned int * nCells, unsigned int * cnt, 
-	unsigned int * nNonEmptyCells, int * pointIDKey, int * pointInDistVal, DTYPE * distancesKeyVal, unsigned int * queryPts, unsigned int * threadsForDistanceCalc, CTYPE* workCounts);
+	const unsigned int nNonEmptyCells,  int * pointIDKey, int * pointInDistVal, DTYPE * distancesKeyVal, unsigned int * queryPts, const unsigned int threadsForDistanceCalc, CTYPE* workCounts);
 
 __device__ uint64_t getLinearID_nDimensionsGPU(unsigned int * indexes, unsigned int * dimLen, unsigned int nDimensions);
 

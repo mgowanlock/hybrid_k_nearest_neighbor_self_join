@@ -9,10 +9,12 @@ void distanceTableNDSortAndSearch(std::vector<std::vector<DTYPE> > * NDdataPoint
 	std::vector<unsigned int> *queryPtsVect, DTYPE* epsilon,  unsigned int k_neighbors, 
 	uint64_t * totalNeighbors, struct neighborTableLookup * neighborTable);
 
+
+
 void distanceTableNDGridBatcheskNN(std::vector<std::vector<DTYPE> > * NDdataPoints, int * nearestNeighborTable, 
 	DTYPE * nearestNeighborTableDistances,  double * totaldistance, 
-	std::vector<unsigned int> *queryPtsVect, DTYPE* epsilon,  unsigned int k_neighbors, struct grid * index, 
-	struct gridCellLookup * gridCellLookupArr, unsigned int * nNonEmptyCells, DTYPE* minArr, unsigned int * nCells, 
+	std::vector<unsigned int> *queryPtsVect, DTYPE epsilon,  unsigned int k_neighbors, struct grid * index, 
+	struct gridCellLookup * gridCellLookupArr, const unsigned int nNonEmptyCells, DTYPE* minArr, unsigned int * nCells, 
 	unsigned int * indexLookupArr, struct neighborTableLookup * neighborTable, std::vector<struct neighborDataPtrs> * pointersToNeighbors, 
 	uint64_t * totalNeighbors, CTYPE* workCounts);
 
@@ -21,9 +23,19 @@ void distanceTableNDBruteForce(std::vector<std::vector<DTYPE> > * NDdataPoints, 
 	std::vector<unsigned int> *queryPtsVect, DTYPE* epsilon,  unsigned int k_neighbors, 
 	uint64_t * totalNeighbors, struct neighborTableLookup * neighborTable);
 
-unsigned long long callGPUBatchEst(unsigned int * DBSIZE, unsigned int N_QueryPts, unsigned int * dev_queryPts, unsigned int k_Neighbors, DTYPE* dev_database,  DTYPE* in_epsilon, DTYPE* dev_epsilon, struct grid * dev_grid, 
+
+//original before refactor
+// unsigned long long GPUBatchEst(unsigned int * DBSIZE, unsigned int N_QueryPts, unsigned int * dev_queryPts, unsigned int k_Neighbors, DTYPE* dev_database,  
+// DTYPE* in_epsilon, DTYPE* dev_epsilon, struct grid * dev_grid, 
+// 	unsigned int * dev_indexLookupArr, struct gridCellLookup * dev_gridCellLookupArr, DTYPE* dev_minArr, 
+// 	unsigned int * dev_nCells, unsigned int * dev_nNonEmptyCells, unsigned int * retNumBatches, unsigned int * retGPUBufferSize);
+
+
+unsigned long long GPUBatchEst(unsigned int * DBSIZE, unsigned int N_QueryPts, unsigned int * dev_queryPts, unsigned int k_Neighbors, DTYPE* dev_database,
+  const DTYPE epsilon, struct grid * dev_grid, 
 	unsigned int * dev_indexLookupArr, struct gridCellLookup * dev_gridCellLookupArr, DTYPE* dev_minArr, 
-	unsigned int * dev_nCells, unsigned int * dev_nNonEmptyCells, unsigned int * retNumBatches, unsigned int * retGPUBufferSize);
+	unsigned int * dev_nCells, const unsigned int nNonEmptyCells, unsigned int * retNumBatches, unsigned int * retGPUBufferSize);
+
 
 
 // void constructNeighborTableKeyValueWithPtrskNN(int * pointIDKey, int * pointInDistValue, double * distancePointInDistValue, struct neighborTableLookup * neighborTable, int * pointersToNeighbors, double * pointersToDistances, unsigned int * cnt);

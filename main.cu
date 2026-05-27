@@ -125,6 +125,13 @@ int main(int argc, char *argv[])
 	cout <<"\n\nIncorrect number of input parameters.  \nShould be dataset file, number of dimensions, kNN\n";
 	return 0;
 	}
+
+	//check parameters:
+	if (ILP>0 && ILP>GPUNUMDIM)
+	{
+	cout <<"\nERROR: ILP>GPUNUMDIM. Set ILP<=GPUNUMDIM\n";
+	return 0;
+	}
 	
 	//copy parameters from commandline:
 	//char inputFname[]="data/test_data_removed_nan.txt";	
@@ -206,7 +213,7 @@ int main(int argc, char *argv[])
 
     
     DTYPE eps_est=0;
-    DTYPE eps_est_initial=0;	
+    // DTYPE eps_est_initial=0;	
     unsigned int bucket=0;
     double tstartEstEps=omp_get_wtime();
     sampleNeighborsBruteForce(&NDdataPoints, &eps_est, &bucket, kNN);
@@ -217,7 +224,7 @@ int main(int argc, char *argv[])
     
 
     printf("\nMain: estimate of epsilon: %0.9f",eps_est);
-    eps_est_initial=eps_est;
+    // eps_est_initial=eps_est;
 	
 
 	generateNDGridDimensions(&NDdataPoints,eps_est, minArr, maxArr, nCells, &totalCells);
@@ -275,7 +282,7 @@ int main(int argc, char *argv[])
 	computeWorkDifficulty(outputOrderedQueryPntIDs, gridCellLookupArr, &nNonEmptyCells, indexLookupArr, index);
 
 
-	//store the number of queries so we can comput the fail rate of the batch (used for increasing epsilon)
+	//store the number of queries so we can compute the fail rate of the batch (used for increasing epsilon)
 	std::vector<unsigned int>queriesGPU;
 	queriesGPU.insert(queriesGPU.end(), &outputOrderedQueryPntIDs[0], &outputOrderedQueryPntIDs[NDdataPoints.size()]);
 
@@ -335,8 +342,12 @@ int main(int argc, char *argv[])
 			delete [] index;
 
 			double tstartindex=omp_get_wtime();
+			//Original:
 			//Increase epsilon by 0.5 epsilon:
-			eps_est+=(eps_est_initial*0.5);
+			// eps_est+=(eps_est_initial*0.5);
+
+			eps_est*=2;
+
 
 			if(eps_est==0.0)
 			{
@@ -377,7 +388,7 @@ int main(int argc, char *argv[])
 		{
 		double totaldisttmp=0.0; //for consistency
 		double tstartGPU=omp_get_wtime();	
-		distanceTableNDGridBatcheskNN(&NDdataPoints, ptr_to_neighbortable, ptr_to_neighbortable_distances, &totaldisttmp, &queriesGPU, &eps_est, kNN, index, gridCellLookupArr, &nNonEmptyCells,  minArr, nCells, indexLookupArr, neighborTable, &pointersToNeighbors, &totalNeighbors, workCounts);	
+		distanceTableNDGridBatcheskNN(&NDdataPoints, ptr_to_neighbortable, ptr_to_neighbortable_distances, &totaldisttmp, &queriesGPU, eps_est, kNN, index, gridCellLookupArr, nNonEmptyCells,  minArr, nCells, indexLookupArr, neighborTable, &pointersToNeighbors, &totalNeighbors, workCounts);	
 		double tendGPU=omp_get_wtime();
 		printf("\n[GRID] Time to compute distance table for KNN (epsilon=%f): %f,", eps_est, tendGPU - tstartGPU);
 
@@ -472,8 +483,8 @@ int main(int argc, char *argv[])
 	#if THREADMULTI==-1
 	gpu_stats<<totalTime<<", "<< inputFname<<", KNN: "<<kNN<<nprocs<<", Eps bucket: "<<bucket<<", Total dist: "<<setprecision(9)<<
 	totalDistance<<", "<<
-	"GPUNUMDIM/NUMINDEXEDDIM/REORDER/SHORTCIRCUIT/THREADMULTI/MAXTHREADSPERPOINT/DYNAMICTHRESHOLD/STATICTHREADSPERPOINT/BETA/DTYPE(float/double): "
-	<<GPUNUMDIM<<", "<<NUMINDEXEDDIM<<", "<<REORDER<< ", "<<SHORTCIRCUIT<<", "<<THREADMULTI<<", "<<MAXTHREADSPERPOINT<<", "
+	"GPUNUMDIM/NUMINDEXEDDIM/REORDER/SHORTCIRCUIT/ILP/THREADMULTI/MAXTHREADSPERPOINT/DYNAMICTHRESHOLD/STATICTHREADSPERPOINT/BETA/DTYPE(float/double): "
+	<<GPUNUMDIM<<", "<<NUMINDEXEDDIM<<", "<<REORDER<< ", "<<SHORTCIRCUIT<<", "<<ILP<<", "<<THREADMULTI<<", "<<MAXTHREADSPERPOINT<<", "
 	<<DYNAMICTHRESHOLD<<", N/A, "<<BETA<<", "
 	<< STR(DTYPE)<<endl;
 	#endif
@@ -481,8 +492,8 @@ int main(int argc, char *argv[])
 	#if THREADMULTI==-2
 	gpu_stats<<totalTime<<", "<< inputFname<<", KNN: "<<kNN<<", Eps bucket: "<<bucket<<", Total dist: "<<setprecision(9)
 	<<totalDistance<<", "<<
-	"GPUNUMDIM/NUMINDEXEDDIM/REORDER/SHORTCIRCUIT/THREADMULTI/MAXTHREADSPERPOINT/DYNAMICTHRESHOLD/STATICTHREADSPERPOINT/BETA/DTYPE(float/double): "
-	<<GPUNUMDIM<<", "<<NUMINDEXEDDIM<<", "<<REORDER<< ", "<<SHORTCIRCUIT<<", "<<THREADMULTI<<", "<<MAXTHREADSPERPOINT<<", N/A, "<<STATICTHREADSPERPOINT<<", "
+	"GPUNUMDIM/NUMINDEXEDDIM/REORDER/SHORTCIRCUIT/ILP/THREADMULTI/MAXTHREADSPERPOINT/DYNAMICTHRESHOLD/STATICTHREADSPERPOINT/BETA/DTYPE(float/double): "
+	<<GPUNUMDIM<<", "<<NUMINDEXEDDIM<<", "<<REORDER<< ", "<<SHORTCIRCUIT<<", "<<ILP<<", "<<THREADMULTI<<", "<<MAXTHREADSPERPOINT<<", N/A, "<<STATICTHREADSPERPOINT<<", "
 	<<BETA<<", "
 	<<STR(DTYPE)<<endl;
 	#endif

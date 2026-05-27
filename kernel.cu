@@ -14,7 +14,10 @@
 
 
 
-__device__ void evaluateCell(unsigned int* nCells, unsigned int* indexes, struct gridCellLookup * gridCellLookupArr, unsigned int* nNonEmptyCells, DTYPE* database, DTYPE* epsilon, struct grid * index, unsigned int * indexLookupArr, unsigned int* cnt,int* pointIDKey, int* pointInDistVal, DTYPE* distancesKeyVal, int pointIdx, unsigned int* nDCellIDs, CTYPE* workCounts, unsigned int * threadsForDistanceCalc, unsigned int * tid);
+__device__ void evaluateCell(unsigned int* nCells, unsigned int* indexes, struct gridCellLookup * gridCellLookupArr, 
+	const unsigned int nNonEmptyCells, DTYPE* database, const DTYPE epsilon, struct grid * index, unsigned int * indexLookupArr, 
+	 unsigned int* cnt, int* pointIDKey, int* pointInDistVal, DTYPE * distancesKeyVal, int pointIdx, 
+	unsigned int* nDCellIDs, CTYPE* workCounts, unsigned int * threadsForDistanceCalc, unsigned int * tid);
 __forceinline__ __device__ void evalPointWithoutEpsilon(unsigned int* indexLookupArr, int k, DTYPE* database, DTYPE* point, unsigned int* cnt, int* pointIDKey, int* pointInDistVal, DTYPE * distancesKeyVal, int pointIdx, bool differentCell);
 
 
@@ -56,28 +59,29 @@ __device__ uint64_t getLinearID_nDimensionsGPU(unsigned int * indexes, unsigned 
 //unsigned int * queryPts - query point ids to be processed
 //N is now the number of query points per batch
 
-//We now attempt to compute the kNN for each point without restarting the ones that don't
-//have k neighbors, by looking at the other adjacent cells
-__global__ void kernelNDGridIndexGlobalkNN(unsigned int *debug1, unsigned int *debug2, unsigned int * k_neighbors, unsigned int *N,  
-	unsigned int * offset, unsigned int *batchNum, DTYPE* database, DTYPE* epsilon, struct grid * index, unsigned int * indexLookupArr, 
+//list rm parameters
+//const unsigned int k_neighbors
+
+__global__ void kernelNDGridIndexGlobalkNN(const unsigned int N,  
+	const unsigned int offset, const unsigned int batchNum, DTYPE* database, const DTYPE epsilon, struct grid * index, unsigned int * indexLookupArr, 
 	struct gridCellLookup * gridCellLookupArr, DTYPE* minArr, unsigned int * nCells, unsigned int * cnt, 
-	unsigned int * nNonEmptyCells,  int * pointIDKey, int * pointInDistVal, DTYPE * distancesKeyVal, unsigned int * queryPts, unsigned int * threadsForDistanceCalc, CTYPE* workCounts)
+	const unsigned int nNonEmptyCells,  int * pointIDKey, int * pointInDistVal, DTYPE * distancesKeyVal, unsigned int * queryPts, const unsigned int threadsForDistanceCalc, CTYPE* workCounts)
 {
 
 
 //query id
-unsigned int threadsDistCalcReg=(*threadsForDistanceCalc);
+unsigned int threadsDistCalcReg=threadsForDistanceCalc;
 unsigned int qid=(threadIdx.x+ (blockIdx.x*BLOCKSIZE))/threadsDistCalcReg; //each additional iteration we add a 
 																					//number of threads for doing distance 						
 																					//calculations	
-if (qid>=*N){
+if (qid>=N){
 	return;
 }
 
 
 //thread id
 unsigned int tid=(threadIdx.x+ (blockIdx.x*BLOCKSIZE)); 
-unsigned int pointIdx=queryPts[qid*(*offset)+(*batchNum)]; 
+unsigned int pointIdx=queryPts[(qid*offset)+batchNum]; 
 unsigned int pointOffset=pointIdx*(GPUNUMDIM); 
 
 unsigned int nDCellIDs[NUMINDEXEDDIM];
@@ -88,7 +92,7 @@ unsigned int loopRng[NUMINDEXEDDIM];
 
 
 for (int i=0; i<NUMINDEXEDDIM; i++){
-	nDCellIDs[i]=(database[pointOffset+i]-minArr[i])/(*epsilon);
+	nDCellIDs[i]=(database[pointOffset+i]-minArr[i])/epsilon;
 	nDMinCellIDs[i]=max(0,(int)nDCellIDs[i]-(int)1); //boundary conditions (don't go beyond cell 0) 
 																		//cast to int so we don't roll over into a high positive unsigned int value
 	nDMaxCellIDs[i]=min(nCells[i]-1,nDCellIDs[i]+1); //boundary conditions (don't go beyond the maximum number of cells)
@@ -113,51 +117,91 @@ for (int i=0; i<NUMINDEXEDDIM; i++){
 }
 
 
-__forceinline__ __device__ void evalPoint(unsigned int* indexLookupArr, int k, DTYPE* database, DTYPE* epsilon, 
-	unsigned int* cnt, int* pointIDKey, int* pointInDistVal, DTYPE * distancesKeyVal, int pointIdx) {
 
-
-	DTYPE runningTotalDist=0;
+//version from GDS-Join with ILP:
+__forceinline__ __device__ void evalPoint(
+	unsigned int* indexLookupArr, 
+	int k, 
+	DTYPE* database, 
+	const DTYPE epsilon, 
+	unsigned int* cnt, 
+	int* pointIDKey, 
+	int* pointInDistVal, 
+	DTYPE * distancesKeyVal, 
+	int pointIdx) {
+	
 	unsigned int dataIdx=indexLookupArr[k];
 
-	#if SHORTCIRCUIT==1
-	bool exitFlag=0;
-	#endif
-
-        for (int l=0; l<GPUNUMDIM; l++){
-         runningTotalDist+=(database[dataIdx*GPUNUMDIM+l]-database[pointIdx*GPUNUMDIM+l])*
-         (database[dataIdx*GPUNUMDIM+l]-database[pointIdx*GPUNUMDIM+l]);
-          #if SHORTCIRCUIT==1
-          if ((runningTotalDist>(((*epsilon)*(*epsilon))))) { 
-          	  exitFlag=1;                                                 
-              break;													  
-          }
-          #endif
-        }
-       
-        
-        #if SHORTCIRCUIT==1
-        if (exitFlag==0)
-        {
-        #endif
-        	
-        runningTotalDist=sqrt(runningTotalDist);
-
-        
-	        if (runningTotalDist<=(*epsilon)){
-	          unsigned int idx=atomicAdd(cnt,int(1));
-	          pointIDKey[idx]=pointIdx;
-	          pointInDistVal[idx]=dataIdx;
-	          distancesKeyVal[idx]=runningTotalDist;
-			}
-
-		#if SHORTCIRCUIT==1	
-		}
-		#endif
+	//If we use ILP
+	#if ILP>0
+	DTYPE runningDist[ILP];
 	
+	#pragma unroll
+	for(int j=0; j<ILP; j++)
+		runningDist[j]=0;
 
 
+	for(int l=0; l<GPUNUMDIM; l+=ILP) {
+		#pragma unroll
+		for(int j=0; j<ILP && (l+j) < GPUNUMDIM; j++) {
+			runningDist[j] += (database[dataIdx*GPUNUMDIM+l+j]-database[pointIdx*GPUNUMDIM+l+j])*(database[dataIdx*GPUNUMDIM+l+j]-database[pointIdx*GPUNUMDIM+l+j]);
+		}
+          	#if SHORTCIRCUIT==1
+			#pragma unroll
+			for(int j=1; j<ILP; j++) {
+				runningDist[0] += runningDist[j];
+				runningDist[j]=0;
+			}
+	        	if (sqrt(runningDist[0])>epsilon) {
+        	    	  return;
+          		}
+         	 #endif
+	}
 
+	#pragma unroll
+	for(int j=1; j<ILP; j++) {
+		runningDist[0] += runningDist[j];
+	}
+
+	#endif
+	//end ILP
+
+	//No ILP
+	#if ILP==0
+	DTYPE runningTotalDist=0;
+    for (int l=0; l<GPUNUMDIM; l++){
+      runningTotalDist+=(database[dataIdx*GPUNUMDIM+l]-database[pointIdx*GPUNUMDIM+l])*(database[dataIdx*GPUNUMDIM+l]-database[pointIdx*GPUNUMDIM+l]);
+      #if SHORTCIRCUIT==1
+      if (sqrt(runningTotalDist)>epsilon){
+          return;
+      }
+      #endif
+    }
+	#endif
+	//end no ILP
+
+    	//distance calculation using either ILP or no ILP
+    	#if ILP>0
+        if (sqrt(runningDist[0])<=epsilon){
+        #endif
+        #if ILP==0
+        if (sqrt(runningTotalDist)<=epsilon){	
+        #endif	
+		        
+          unsigned int idx=atomicAdd(cnt,int(1));
+          pointIDKey[idx]=pointIdx;
+          pointInDistVal[idx]=dataIdx;
+
+
+          #if ILP>0
+          distancesKeyVal[idx]=sqrt(runningDist[0]);
+          #endif
+
+          #if ILP==0
+          distancesKeyVal[idx]=sqrt(runningTotalDist);
+          #endif
+
+		}
 }
 
 __forceinline__ __device__ void evalPointWithoutEpsilon(unsigned int* indexLookupArr, int k, DTYPE* database, DTYPE* point, unsigned int* cnt, int* pointIDKey, int* pointInDistVal, DTYPE * distancesKeyVal, int pointIdx, bool differentCell) {
@@ -178,7 +222,7 @@ __forceinline__ __device__ void evalPointWithoutEpsilon(unsigned int* indexLooku
 
 
 __device__ void evaluateCell(unsigned int* nCells, unsigned int* indexes, struct gridCellLookup * gridCellLookupArr, 
-	unsigned int* nNonEmptyCells, DTYPE* database, DTYPE* epsilon, struct grid * index, unsigned int * indexLookupArr, 
+	const unsigned int nNonEmptyCells, DTYPE* database, const DTYPE epsilon, struct grid * index, unsigned int * indexLookupArr, 
 	 unsigned int* cnt, int* pointIDKey, int* pointInDistVal, DTYPE * distancesKeyVal, int pointIdx, 
 	unsigned int* nDCellIDs, CTYPE* workCounts, unsigned int * threadsForDistanceCalc, unsigned int * tid) {
 
@@ -194,11 +238,11 @@ __device__ void evaluateCell(unsigned int* nCells, unsigned int* indexes, struct
     struct gridCellLookup tmp;
     tmp.gridLinearID=calcLinearID;
     //find if the cell is non-empty
-    if (thrust::binary_search(thrust::seq, gridCellLookupArr, gridCellLookupArr+ (*nNonEmptyCells), gridCellLookup(tmp))){
+    if (thrust::binary_search(thrust::seq, gridCellLookupArr, gridCellLookupArr+ nNonEmptyCells, gridCellLookup(tmp))){
 
 
     	//compute the neighbors for the adjacent non-empty cell
-    	struct gridCellLookup * resultBinSearch=thrust::lower_bound(thrust::seq, gridCellLookupArr, gridCellLookupArr+(*nNonEmptyCells), gridCellLookup(tmp));
+    	struct gridCellLookup * resultBinSearch=thrust::lower_bound(thrust::seq, gridCellLookupArr, gridCellLookupArr+nNonEmptyCells, gridCellLookup(tmp));
     	unsigned int GridIndex=resultBinSearch->idx;
 	
 
@@ -758,9 +802,9 @@ bool foundMax=0;
 
 
 __global__ void kernelNDGridIndexBatchEstimatorQuerySet(unsigned int *debug1, unsigned int *debug2, unsigned int * threadsForDistanceCalc, unsigned int * queryPts,unsigned int *N,  
-	unsigned int * sampleOffset, DTYPE* database, DTYPE* epsilon, struct grid * index, unsigned int * indexLookupArr, 
+	unsigned int * sampleOffset, DTYPE* database, const DTYPE epsilon, struct grid * index, unsigned int * indexLookupArr, 
 	struct gridCellLookup * gridCellLookupArr, DTYPE* minArr, unsigned int * nCells, unsigned int * cnt, 
-	unsigned int * nNonEmptyCells)
+	const unsigned int nNonEmptyCells)
 {
 
 // unsigned int tid=threadIdx.x+ (blockIdx.x*BLOCKSIZE); 
@@ -808,7 +852,7 @@ unsigned int nDMaxCellIDs[NUMINDEXEDDIM];
 unsigned int indexes[NUMINDEXEDDIM];
 unsigned int loopRng[NUMINDEXEDDIM];
 for (int i=0; i<NUMINDEXEDDIM; i++){
-	nDCellIDs[i]=(point[i]-minArr[i])/(*epsilon);
+	nDCellIDs[i]=(point[i]-minArr[i])/epsilon;
 	nDMinCellIDs[i]=max(0,nDCellIDs[i]-1); //boundary conditions (don't go beyond cell 0)
 	nDMaxCellIDs[i]=min(nCells[i]-1,nDCellIDs[i]+1); //boundary conditions (don't go beyond the maximum number of cells)
 
@@ -839,7 +883,8 @@ for (int i=0; i<NUMINDEXEDDIM; i++){
 
 	struct gridCellLookup tmp;
 	tmp.gridLinearID=calcLinearID;
-	if (thrust::binary_search(thrust::seq, gridCellLookupArr, gridCellLookupArr+ (*nNonEmptyCells), gridCellLookup(tmp))){
+
+	if (thrust::binary_search(thrust::seq, gridCellLookupArr, gridCellLookupArr+nNonEmptyCells, gridCellLookup(tmp))){
 		//in the GPU implementation we go directly to computing neighbors so that we don't need to
 		//store a buffer of the cells to check 
 		//cellsToCheck->push_back(calcLinearID); 
@@ -850,7 +895,7 @@ for (int i=0; i<NUMINDEXEDDIM; i++){
 
 
 		
-		struct gridCellLookup * resultBinSearch=thrust::lower_bound(thrust::seq, gridCellLookupArr, gridCellLookupArr+(*nNonEmptyCells), gridCellLookup(tmp));
+		struct gridCellLookup * resultBinSearch=thrust::lower_bound(thrust::seq, gridCellLookupArr, gridCellLookupArr+nNonEmptyCells, gridCellLookup(tmp));
 		unsigned int GridIndex=resultBinSearch->idx;
 
 		for (int k=index[GridIndex].indexmin; k<=index[GridIndex].indexmax; k+=(*threadsForDistanceCalc)){
@@ -866,7 +911,7 @@ for (int i=0; i<NUMINDEXEDDIM; i++){
 					runningTotalDist+=(database[dataIdx*GPUNUMDIM+l]-point[l])*(database[dataIdx*GPUNUMDIM+l]-point[l]);
 					
 					  #if SHORTCIRCUIT==1
-			          if (sqrt(runningTotalDist)>(*epsilon)) {
+			          if (sqrt(runningTotalDist)>epsilon) {
 			              break;
 			          }
 			          #endif
@@ -874,7 +919,7 @@ for (int i=0; i<NUMINDEXEDDIM; i++){
 					}
 
 
-					if (sqrt(runningTotalDist)<=(*epsilon)){
+					if (sqrt(runningTotalDist)<=epsilon){
 						unsigned int idx=atomicAdd(cnt,int(1));
 						// pointIDKey[idx]=tid;
 						// pointInDistVal[idx]=i;

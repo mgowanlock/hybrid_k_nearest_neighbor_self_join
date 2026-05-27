@@ -13,7 +13,7 @@ EXECUTABLE = main
 COMPUTE_CAPABILITY = 75
 COMPUTE_CAPABILITY_FLAGS = -arch=compute_$(COMPUTE_CAPABILITY) -code=sm_$(COMPUTE_CAPABILITY) 
 
-FLAGS = -std=c++14 -O3 -Xcompiler -fopenmp -lcuda -lineinfo
+FLAGS = -std=c++17 -O3 -Xcompiler -fopenmp -lcuda -lineinfo
 CFLAGS = -c
 
 

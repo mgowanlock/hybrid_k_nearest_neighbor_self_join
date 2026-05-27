@@ -4,14 +4,30 @@
 //data type of the data
 #define DTYPE float
 
-//Set both of these to the number of dimensions
-#define GPUNUMDIM 100
-#define NUMINDEXEDDIM 6
+
+//GPUNUMDIM - The number of data dimensions
+//NUMINDEXEDDIM - The number of dimensions used for indexing
+//Recommended parameters: Set both of these to the number of dimensions when the number of data dimensions (GPUNUMDIM) is <=6
+#define GPUNUMDIM 3
+#define NUMINDEXEDDIM 3
 
 //This stores the points within the distance of each query for multiple streams
 //If your GPU has a memory allocation error, it's likely that this value needs to be decreased to allow
 //for smaller batches to be processed
-#define GPUBUFFERSIZE 75000000 
+#define GPUBUFFERSIZE 150000000 
+
+
+//Optimization added after JPDC 2021 paper:
+
+//ILP stores pairwise distances in registers so they can be computed in parallel
+//ILP 0 or 1 means no additional registers are used for distance calculations
+//ILP not beneficial for low dimensional datasets (e.g., <=6 dimensions)
+//ILP should not exceed GPUNUMDIM
+#define ILP 0
+
+//Short circuits the distance calculation when the running total distance exceeds epsilon
+#define SHORTCIRCUIT 0 //this is useful for high dimesional datasets, but not for low-dimensional datasets
+						//Recommended parameter: enable when k>4
 
 
 ///////////////////////
@@ -27,9 +43,7 @@
 
 //It is unlikely you will need to change anything below:
 
-#define GPUSTREAMS 3 //number of concurrent gpu streams (GPUBUFFERSIZE) is allocated for each stream
-
-#define SHORTCIRCUIT 1
+#define GPUSTREAMS 2 //number of concurrent gpu streams (GPUBUFFERSIZE) is allocated for each stream
  
  
 #define REORDER 1 //This reorders the data by dimensionality
