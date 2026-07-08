@@ -19,8 +19,8 @@ void distanceTableNDGridBatcheskNN(std::vector<std::vector<DTYPE> > * NDdataPoin
 	uint64_t * totalNeighbors, CTYPE* workCounts);
 
 //used when the index no longer provides enough selectivity
-void distanceTableNDBruteForce(std::vector<std::vector<DTYPE> > * NDdataPoints, int * nearestNeighborTable, DTYPE * nearestNeighborTableDistances, 
-	std::vector<unsigned int> *queryPtsVect, DTYPE* epsilon,  unsigned int k_neighbors, 
+void distanceTableNDBruteForce(std::vector<std::vector<DTYPE> > * NDdataPoints, int * nearestNeighborTable, DTYPE * nearestNeighborTableDistances,
+	double * totaldistance, std::vector<unsigned int> *queryPtsVect,  unsigned int k_neighbors, 
 	uint64_t * totalNeighbors, struct neighborTableLookup * neighborTable);
 
 

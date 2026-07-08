@@ -180,28 +180,60 @@ __forceinline__ __device__ void evalPoint(
 	#endif
 	//end no ILP
 
+
+    ////////////////////////////
+    //rewriting this:
     	//distance calculation using either ILP or no ILP
-    	#if ILP>0
-        if (sqrt(runningDist[0])<=epsilon){
-        #endif
-        #if ILP==0
-        if (sqrt(runningTotalDist)<=epsilon){	
-        #endif	
+    	// #if ILP>0
+        // if (sqrt(runningDist[0])<=epsilon){
+        // #endif
+        // #if ILP==0
+        // if (sqrt(runningTotalDist)<=epsilon){	
+        // #endif	
 		        
+        //   unsigned int idx=atomicAdd(cnt,int(1));
+        //   pointIDKey[idx]=pointIdx;
+        //   pointInDistVal[idx]=dataIdx;
+
+        //   //testing:
+        //   // if(idx > 150000000){
+        //   // 	printf("\n[GPU] ERROR idx > 150000000: %u", idx);
+        //   // }
+
+
+        //   #if ILP>0
+        //   distancesKeyVal[idx]=sqrt(runningDist[0]);
+        //   #endif
+
+        //   #if ILP==0
+        //   distancesKeyVal[idx]=sqrt(runningTotalDist);
+        //   #endif
+
+		// }
+
+		////////////////////////////
+
+    	#if ILP>0
+    	DTYPE sqrtDist = sqrt(runningDist[0]);
+        if (sqrtDist<=epsilon){
           unsigned int idx=atomicAdd(cnt,int(1));
           pointIDKey[idx]=pointIdx;
           pointInDistVal[idx]=dataIdx;
+          distancesKeyVal[idx]=sqrtDist;
+        }
+        #endif  
+          
+        #if ILP==0
+        DTYPE sqrtDist = sqrt(runningTotalDist);
+        if (sqrtDist<=epsilon){
+          unsigned int idx=atomicAdd(cnt,int(1));
+          pointIDKey[idx]=pointIdx;
+          pointInDistVal[idx]=dataIdx;
+          distancesKeyVal[idx]=sqrtDist;
+        }
+        #endif
 
-
-          #if ILP>0
-          distancesKeyVal[idx]=sqrt(runningDist[0]);
-          #endif
-
-          #if ILP==0
-          distancesKeyVal[idx]=sqrt(runningTotalDist);
-          #endif
-
-		}
+		
 }
 
 __forceinline__ __device__ void evalPointWithoutEpsilon(unsigned int* indexLookupArr, int k, DTYPE* database, DTYPE* point, unsigned int* cnt, int* pointIDKey, int* pointInDistVal, DTYPE * distancesKeyVal, int pointIdx, bool differentCell) {
@@ -944,29 +976,33 @@ for (int i=0; i<NUMINDEXEDDIM; i++){
 //N- query set size for the batch
 
 //used when the index no longer provides any selectivity
-__global__ void kernelNDBruteForce(unsigned int *debug1, unsigned int *debug2, unsigned int *N, unsigned int * DBSIZE, 
-	unsigned int * offset, unsigned int *batchNum, DTYPE* database, unsigned int * cnt, 
-	int * pointIDKey, int * pointInDistVal, DTYPE * distancesKeyVal, unsigned int * queryPts, unsigned int * threadsForDistanceCalc, CTYPE* workCounts)
+__global__ void kernelNDBruteForce(unsigned int *debug1, unsigned int *debug2, const unsigned int N, const unsigned int DBSIZE, 
+	const unsigned int offset, const unsigned int batchNum, DTYPE* database, unsigned int * cnt, 
+	int * pointIDKey, int * pointInDistVal, DTYPE * distancesKeyVal, unsigned int * queryPts, const unsigned int threadsForDistanceCalc, CTYPE* workCounts)
 {
 
 
 
 //query id
-unsigned int threadsDistCalcReg=(*threadsForDistanceCalc);
-unsigned int qid=(threadIdx.x+ (blockIdx.x*BLOCKSIZE))/threadsDistCalcReg; //each additional iteration we add a 
+unsigned int threadsDistCalcReg=threadsForDistanceCalc;
+unsigned int qid=(threadIdx.x+ (blockIdx.x*BLOCKSIZE))/threadsDistCalcReg;
 
 
 
+//for testing the kernel:
+// *cnt = 0;
+// return;
 		
 
 
-if (qid>=*N){
+if (qid>=N){
 	return;
 }
 
 //thread id
 unsigned int tid=(threadIdx.x+ (blockIdx.x*BLOCKSIZE)); 
-unsigned int pointIdx=queryPts[qid*(*offset)+(*batchNum)];  
+unsigned int pointIdx=queryPts[qid*offset+(batchNum)];  
+
 
 
 
@@ -977,11 +1013,12 @@ for (int i=0; i<GPUNUMDIM; i++){
 }
 
 
+	
 
 	DTYPE runningTotalDist=0;
 
 
-	for (unsigned int i=0; i<(*DBSIZE); i+=threadsDistCalcReg)
+	for (unsigned int i=0; i<DBSIZE; i+=threadsDistCalcReg)
 	{		
 		runningTotalDist=0;
 
@@ -994,7 +1031,7 @@ for (int i=0; i<GPUNUMDIM; i++){
 		
 
 		//to ensure that the thread doesn't go past the database size
-		if (dataIdx<(*DBSIZE))
+		if (dataIdx<DBSIZE)
 		{
 	        for (int l=0; l<GPUNUMDIM; l++){
 	          runningTotalDist+=(database[dataIdx*GPUNUMDIM+l]-point[l])*(database[dataIdx*GPUNUMDIM+l]-point[l]);
@@ -1004,20 +1041,21 @@ for (int i=0; i<GPUNUMDIM; i++){
 	        	
 	        runningTotalDist=sqrt(runningTotalDist);
 
-	    
-		          unsigned int idx=atomicAdd(cnt,int(1));
+		          unsigned int idx=atomicAdd(cnt, 1);
 		          pointIDKey[idx]=pointIdx;
 		          pointInDistVal[idx]=dataIdx;
 		          distancesKeyVal[idx]=runningTotalDist;
+
+		        
 	
 	    }      
 	}
 
-
-
-
-
+	
 }
+
+
+
 
 
 

@@ -14,7 +14,7 @@
 //This stores the points within the distance of each query for multiple streams
 //If your GPU has a memory allocation error, it's likely that this value needs to be decreased to allow
 //for smaller batches to be processed
-#define GPUBUFFERSIZE 150000000 
+#define GPUBUFFERSIZE 200000000 
 
 
 //Optimization added after JPDC 2021 paper:

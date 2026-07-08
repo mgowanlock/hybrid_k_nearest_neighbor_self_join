@@ -314,6 +314,10 @@ int main(int argc, char *argv[])
 
 	double fractionFailuresPrevIter=0;
 
+	bool bruteForceFlag = false;
+	//the number of queries left before triggering brute force
+	unsigned int bruteForceQueryThreshold = 0.000005*numQueries;  
+
 	//XXX
 	// while (numQueries!=-1)
 	while (numQueries!=0)
@@ -327,14 +331,26 @@ int main(int argc, char *argv[])
 		pointersToNeighbors.clear();		
 
 	
+		//check to see if there are only a few queries left to compute; if so, we switch to brute force mode
+		//by setting the flag
+		if(queriesGPU.size()<=bruteForceQueryThreshold){
+			bruteForceFlag = true;
+		}
+
+
 		///////////////////////////////////////////////
-		//Only increase epsilon if reaches threshold failures
+		//Only increase epsilon if it reaches threshold failures
 
 		//If not the first iteration, we re-index with the increased epsilon
 		//If the number of failures on the previous iteration is >25%
+		//If there are few queries, then do not use the index and use brute force instead
+			//This will skip the indexing
 
+		if(numIter!=0){
+			eps_est*=2;
+		}
 		
-		if (numIter!=0 && (fractionFailuresPrevIter>0.25) )
+		if (numIter!=0 && (fractionFailuresPrevIter>0.25) && bruteForceFlag==false)
 		{
 
 			//free previously allocated memory
@@ -346,7 +362,7 @@ int main(int argc, char *argv[])
 			//Increase epsilon by 0.5 epsilon:
 			// eps_est+=(eps_est_initial*0.5);
 
-			eps_est*=2;
+
 
 
 			if(eps_est==0.0)
@@ -386,22 +402,52 @@ int main(int argc, char *argv[])
 		printf("\nNumber of GPU queries: %lu", queriesGPU.size());	
 		if (queriesGPU.size()>0)
 		{
-		double totaldisttmp=0.0; //for consistency
-		double tstartGPU=omp_get_wtime();	
-		distanceTableNDGridBatcheskNN(&NDdataPoints, ptr_to_neighbortable, ptr_to_neighbortable_distances, &totaldisttmp, &queriesGPU, eps_est, kNN, index, gridCellLookupArr, nNonEmptyCells,  minArr, nCells, indexLookupArr, neighborTable, &pointersToNeighbors, &totalNeighbors, workCounts);	
-		double tendGPU=omp_get_wtime();
-		printf("\n[GRID] Time to compute distance table for KNN (epsilon=%f): %f,", eps_est, tendGPU - tstartGPU);
+			double totaldisttmp=0.0; //for consistency
+			
+			//if we use the index
+			if(bruteForceFlag==false){
+				double tstartGPU=omp_get_wtime();	
+				distanceTableNDGridBatcheskNN(&NDdataPoints, ptr_to_neighbortable, ptr_to_neighbortable_distances, 
+					&totaldisttmp, &queriesGPU, eps_est, kNN, index, gridCellLookupArr, nNonEmptyCells,  minArr, nCells, indexLookupArr, neighborTable, &pointersToNeighbors, &totalNeighbors, workCounts);	
+				double tendGPU=omp_get_wtime();
+				printf("\n[GRID] Time to compute distance table for KNN (epsilon=%f): %f,", eps_est, tendGPU - tstartGPU);
+		
+			}
 
-		// for consistency
-		totalDistance+=totaldisttmp; 
+			//if we use brute force
+			if(bruteForceFlag==true){
+				double tstartGPU=omp_get_wtime();	
+				// distanceTableNDGridBatcheskNN(&NDdataPoints, ptr_to_neighbortable, ptr_to_neighbortable_distances, 
+				//&totaldisttmp, &queriesGPU, eps_est, kNN, index, gridCellLookupArr, nNonEmptyCells,  minArr, nCells, indexLookupArr, neighborTable, &pointersToNeighbors, &totalNeighbors, workCounts);	
+				printf("\n[Brute Force] Number of queries: %lu", queriesGPU.size());				
 
-		printf("\nTotal Distance: %f", totaldisttmp);
+				distanceTableNDBruteForce(&NDdataPoints, ptr_to_neighbortable, ptr_to_neighbortable_distances,
+				&totaldisttmp, &queriesGPU, kNN, 
+				&totalNeighbors, neighborTable);
 
-		//kNN find points with insufficient neighbors from the GPU execution (the ANN execution always finds enough neighbors)
-		double tstartprocNeighborTable=omp_get_wtime();
-		procNeighborTableForkNNUsingDirectTableGPUOnly(&NDdataPoints, kNN, &queriesGPU, ptr_to_neighbortable);
-		double tendprocNeighborTable=omp_get_wtime();
-		printf("\nTime proc queries from neighbor table (GPU only): %f", tendprocNeighborTable- tstartprocNeighborTable);
+				double tendGPU=omp_get_wtime();
+				printf("\n[Brute Force] Time to compute distance table for KNN: %f,", tendGPU - tstartGPU);			
+
+				// printf("\nExiting early...");
+				// return 0;
+			}
+			
+			// for consistency
+			totalDistance+=totaldisttmp; 
+
+
+			printf("\nTotal Distance: %f", totaldisttmp);
+			// fprintf(stderr, "\n[MAIN] totalNeighbors: %lu", totalNeighbors);
+
+			//kNN find points with insufficient neighbors from the GPU execution (the ANN execution always finds enough neighbors)
+			//only if there's more than 1 neighbor found
+			if(totalNeighbors>0){
+				double tstartprocNeighborTable=omp_get_wtime();
+				procNeighborTableForkNNUsingDirectTableGPUOnly(&NDdataPoints, kNN, &queriesGPU, ptr_to_neighbortable);
+				double tendprocNeighborTable=omp_get_wtime();
+				printf("\nTime proc queries from neighbor table (GPU only): %f", tendprocNeighborTable- tstartprocNeighborTable);	
+			}
+		
 		}
 
 		//The load imbalance may be due to the work-queue and not the CPU/GPU end times
@@ -712,7 +758,7 @@ extern "C" void KNNJoinPy(DTYPE * dataset, unsigned int NUMPOINTS, unsigned int 
 
 	double fractionFailuresPrevIter=0;
 
-	
+	//loop over all queries
 	while (numQueries!=0)
 	{
 

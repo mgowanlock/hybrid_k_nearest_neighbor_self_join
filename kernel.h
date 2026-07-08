@@ -17,9 +17,19 @@ __global__ void kernelKDistBruteForce(unsigned int *N, unsigned int * offset, un
 	unsigned long long int * cnt, DTYPE* database, double * avg_distance, unsigned int * histogram, double * bucket_width);
 
 //used when the index no longer provides any selectivity 
-__global__ void kernelNDBruteForce(unsigned int *debug1, unsigned int *debug2, unsigned int *N, unsigned int * DBSIZE, 
-	unsigned int * offset, unsigned int *batchNum, DTYPE* database, unsigned int * cnt, 
-	int * pointIDKey, int * pointInDistVal, DTYPE * distancesKeyVal, unsigned int * queryPts, unsigned int * threadsForDistanceCalc, CTYPE* workCounts);
+__global__ void kernelNDBruteForce(unsigned int *debug1, unsigned int *debug2, 
+	const unsigned int N, 
+	const unsigned int DBSIZE, 
+	const unsigned int offset, 
+	const unsigned int batchNum, 
+	DTYPE* database, 
+	unsigned int * cnt, 
+	int * pointIDKey, 
+	int * pointInDistVal, 
+	DTYPE * distancesKeyVal, 
+	unsigned int * queryPts, 
+	const unsigned int threadsForDistanceCalc, 
+	CTYPE* workCounts);
 
 //used when the index no longer provides any selectivity -- database sorted on first dimension
 __global__ void kernelNDBruteForceSortAndSearch(unsigned int *debug1, unsigned int *debug2, unsigned int *N, unsigned int * DBSIZE, unsigned int * DBmapping, DTYPE* epsilon, unsigned int * k_neighbors,

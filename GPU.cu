@@ -119,15 +119,31 @@ unsigned long long GPUBatchEst(unsigned int * DBSIZE, unsigned int N_QueryPts, u
 	*/
 
 	//because we use a query set with fewer points at each iteration, we need to sample more
-	//at each iteration. Thus, the number of points we sample is 4% of the entire dataset, but then sample that number of query points
+	//at each iteration.
 	
-	//double sampleRate=(0.05*(*DBSIZE))/(N_QueryPts*1.0); //was testing this
+	//do sample rate of 0.1 when  N_QueryPts == DBSIZE
+
+
+	// double sampleRate=0.10;  //original static
 	
-	double sampleRate=0.05; 
+	//dynamic based on remaining number of queries left to process:
+	// double sampleRate=0.10*(sqrt((double)(*DBSIZE)/(double)N_QueryPts));
+	// printf("Sample rate fraction: %f", sqrt((double)(*DBSIZE)/(double)N_QueryPts));
+
+	double minSampleRate = 0.1;
+	double maxSampleRate = 0.3;
+	double diffSampleRate = maxSampleRate - minSampleRate;
+
+	double fractionQueriesToDataPoints = ((double)N_QueryPts/(double)(*DBSIZE));
+
+	double sampleRate= minSampleRate + (1.0-fractionQueriesToDataPoints)*diffSampleRate;
+	
+
 	int offsetRate=1.0/sampleRate;
 	offsetRate=max(offsetRate,1);
 
-	printf("\nSample rate: %f, offset: %d",sampleRate, offsetRate);
+	// printf("\nSample rate: %f, offset: %d",sampleRate, offsetRate);
+	printf("\nNum data points: %u, Num query points: %u, Sample rate: %f, offset: %d", (*DBSIZE), N_QueryPts, sampleRate, offsetRate);
 
 
 	/////////////////
@@ -488,19 +504,10 @@ unsigned long long GPUBatchEst(unsigned int * DBSIZE, unsigned int N_QueryPts, u
 
 
 
-	//initial
 	
-	// #ifndef GPUBUFFERSMALLER
-	// unsigned int GPUBufferSize=100000000; //normal size in SC paper (high-D)
-	// #else
-	// unsigned int GPUBufferSize=50000000; //size in HPBDC paper (low-D)
-	// #endif
-
-	// unsigned int GPUBufferSize=100000000; //normal size in SC paper (high-D)	
-	// unsigned int GPUBufferSize=50000000; //size in HPBDC paper (low-D)
 	unsigned int GPUBufferSize=GPUBUFFERSIZE;
 
-	double alpha=0.1; //overestimation factor -- for kNN needs to be higher than self-join, because we 
+	double alpha=0.5; //overestimation factor -- for kNN needs to be higher than DSSJ, because we 
 						//select high density regions for the GPU
 
 	
@@ -511,12 +518,12 @@ unsigned long long GPUBatchEst(unsigned int * DBSIZE, unsigned int N_QueryPts, u
 
 
 	if (estimatedTotalSizeWithAlpha<(GPUBufferSize*GPUSTREAMS)){
-		printf("\nSmall buffer size, increasing alpha to: %f",alpha*3.0); //was *3.0 
+		printf("\nSmall buffer size, increasing alpha to: %f",alpha*3.0); 
 		
 			
-		GPUBufferSize=estimatedTotalSizeWithAlpha*(1.0+(alpha*2.0))/(GPUSTREAMS);		//we do 2*alpha for small datasets because the
+		GPUBufferSize=estimatedTotalSizeWithAlpha*(1.0+(alpha*3.0))/(GPUSTREAMS);		//we do 3*alpha for small datasets because the
 																		//sampling will be worse for small datasets
-																		//but we fix the 3 streams still (thats why divide by 3).			
+																		//but we fix the GPUSTREAMS streams still (thats why divide by GPUSTREAMS).			
 		
 		//if the modified buffer size is greater than the input buffer size, then
 		//we just set it to be the input size
@@ -1265,6 +1272,7 @@ void distanceTableNDGridBatcheskNN(std::vector<std::vector<DTYPE> > * NDdataPoin
 		//if we have allocated the maximum buffer size for pinned memory allocation, we need to make sure
 		//that we create the same size buffer on the GPU
 		unsigned long int bufferSizeDevice=GPUBufferSize;
+
 		if (pinnedSavedFlag==1)
 		{
 			bufferSizeDevice=GPUBUFFERSIZE;
@@ -1474,7 +1482,7 @@ void distanceTableNDGridBatcheskNN(std::vector<std::vector<DTYPE> > * NDdataPoin
 				printf("\nN (1 less): %d tid: %d",N[tid], tid);
 			}
 
-			//if the number of points is 0, exit
+			//if the number of points is 0, continue
 			//can happen if only a few points for kNN
 			if (N[tid]==0)
 			{	
@@ -1555,19 +1563,7 @@ void distanceTableNDGridBatcheskNN(std::vector<std::vector<DTYPE> > * NDdataPoin
 
 		    
 
-		   
-			// find the size of the number of results
-			errCode=cudaMemcpyAsync( &cnt[tid], &dev_cnt[tid], sizeof(unsigned int), cudaMemcpyDeviceToHost, stream[tid] );
-			if(errCode != cudaSuccess) {
-			cout << "\nError: getting cnt from GPU Got error with code " << errCode << endl; 
-			}
-			else{
-				printf("\nGPU: result set size within epsilon (GPU grid): %d",cnt[tid]);cout.flush();
-				// fprintf(stderr,"\nGPU: result set size within epsilon (GPU grid): %d",cnt[tid]);
-			}
-
-
-			// optional debug values
+		   // optional debug values
 			/*
 				errCode=cudaMemcpyAsync( debug1, dev_debug1, sizeof(unsigned int), cudaMemcpyDeviceToHost, stream[tid] );
 				if(errCode != cudaSuccess) {
@@ -1588,6 +1584,37 @@ void distanceTableNDGridBatcheskNN(std::vector<std::vector<DTYPE> > * NDdataPoin
 				}
 			*/
 
+
+
+			// find the size of the number of results
+			errCode=cudaMemcpyAsync( &cnt[tid], &dev_cnt[tid], sizeof(unsigned int), cudaMemcpyDeviceToHost, stream[tid]);
+			if(errCode != cudaSuccess) {
+			cout << "\nError: [distanceTableNDGridBatcheskNN] getting cnt from GPU Got error with code " << errCode << endl; 
+			cout << "\nError #1: [distanceTableNDGridBatcheskNN] getting cnt from GPU Got error with code " << errCode << endl; 
+			printf("\nError #2: [distanceTableNDGridBatcheskNN] tid: %u, iter: %u",tid, i);cout.flush();
+			}
+			else{
+				printf("\nGPU: [distanceTableNDGridBatcheskNN] result set size within epsilon (GPU grid), tid: %u, iter: %u: %d",tid, i, cnt[tid]);cout.flush();
+				// fprintf(stderr,"\nGPU: result set size within epsilon (GPU grid): %d",cnt[tid]);
+			}
+
+
+			//need to make sure cnt[tid] is copied before checking its value
+			cudaStreamSynchronize(stream[tid]);
+			if(cnt[tid]==0){
+				if ( cudaSuccess != cudaGetLastError() ){
+		    	cout <<"\n\ncudaSuccess: ERROR: "<<cudaSuccess<<endl<<endl;
+				}
+
+				printf("\nReturned count is 0 so there aren't any results to sort, continuing to next iteration.");
+				continue;
+			}
+			
+
+
+				
+
+				
 			
 			////////////////////////////////////
 			//SORT THE TABLE DATA ON THE GPU
@@ -1737,6 +1764,11 @@ void distanceTableNDGridBatcheskNN(std::vector<std::vector<DTYPE> > * NDdataPoin
 			
 			
 	
+
+			
+
+
+			
 			
 
 
@@ -1745,6 +1777,8 @@ void distanceTableNDGridBatcheskNN(std::vector<std::vector<DTYPE> > * NDdataPoin
 		} //END LOOP OVER THE GPU BATCHES
 
 		// cudaDeviceSynchronize();
+
+		
 
 		
 
@@ -1823,14 +1857,13 @@ void distanceTableNDGridBatcheskNN(std::vector<std::vector<DTYPE> > * NDdataPoin
 
 
 
-	//free on the heap
+	//free on the host
 	
 	free(DBSIZE);
 	free(database);
 	free(queryPts);
 	free(totalResultSetCnt);
 	free(cnt);
-	// free(threadsForDistanceCalc);
 	free(N);
 	free(batchOffset);
 	free(batchNumber);
@@ -1838,28 +1871,18 @@ void distanceTableNDGridBatcheskNN(std::vector<std::vector<DTYPE> > * NDdataPoin
 	free(debug2);
 	
 
-
-	//free the data on the device
-	// cudaFree(dev_pointIDKey);
-	// cudaFree(dev_pointInDistValue);
-	// cudaFree(dev_distancesKeyValue);
-	
-
 	cudaFree(dev_database);
 	cudaFree(dev_debug1);
 	cudaFree(dev_debug2);
-	// cudaFree(dev_epsilon);
 	cudaFree(dev_grid);
 	cudaFree(dev_gridCellLookupArr);
 	cudaFree(dev_indexLookupArr);
 	cudaFree(dev_minArr);
 	cudaFree(dev_nCells);
-	// cudaFree(dev_nNonEmptyCells);
 	cudaFree(dev_N); 	
 	cudaFree(dev_cnt); 
 	cudaFree(dev_offset); 
 	cudaFree(dev_batchNumber); 
-	// cudaFree(dev_threadsForDistanceCalc);
 	cudaFree(dev_queryPts);
 	cudaFree(dev_workCounts);
 	
@@ -1905,7 +1928,7 @@ void distanceTableNDGridBatcheskNN(std::vector<std::vector<DTYPE> > * NDdataPoin
 //Don't call the batch estimator anymore, and do a brute force comparison
 //Return all of the neighbors of each point
 void distanceTableNDBruteForce(std::vector<std::vector<DTYPE> > * NDdataPoints, int * nearestNeighborTable, DTYPE * nearestNeighborTableDistances,
-	std::vector<unsigned int> *queryPtsVect, DTYPE* epsilon,  unsigned int k_neighbors, 
+	double * totaldistance, std::vector<unsigned int> *queryPtsVect,  unsigned int k_neighbors, 
 	uint64_t * totalNeighbors, struct neighborTableLookup * neighborTable)
 {
 
@@ -1930,20 +1953,20 @@ void distanceTableNDBruteForce(std::vector<std::vector<DTYPE> > * NDdataPoints, 
 	///////////////////////////////////
 
 
-	unsigned int * DBSIZE;
-	DBSIZE=(unsigned int*)malloc(sizeof(unsigned int));
-	*DBSIZE=NDdataPoints->size();
+	unsigned int DBSIZE = NDdataPoints->size();
+	// DBSIZE=(unsigned int*)malloc(sizeof(unsigned int));
+	// *DBSIZE=NDdataPoints->size();
 	
-	printf("\nIn main GPU method: DBSIZE is: %u",*DBSIZE);cout.flush();
+	printf("\nIn main GPU method: DBSIZE is: %u", DBSIZE);cout.flush();
 
 	
-	DTYPE* database= (DTYPE*)malloc(sizeof(DTYPE)*(*DBSIZE)*(GPUNUMDIM));  
-	DTYPE* dev_database= (DTYPE*)malloc(sizeof(DTYPE)*(*DBSIZE)*(GPUNUMDIM));  
+	DTYPE* database= (DTYPE*)malloc(sizeof(DTYPE)*DBSIZE*GPUNUMDIM);  
+	DTYPE* dev_database= (DTYPE*)malloc(sizeof(DTYPE)*DBSIZE*GPUNUMDIM);  
 	
 		
 	
 	//allocate memory on device:
-	errCode=cudaMalloc( (void**)&dev_database, sizeof(DTYPE)*(GPUNUMDIM)*(*DBSIZE));		
+	errCode=cudaMalloc( (void**)&dev_database, sizeof(DTYPE)*GPUNUMDIM*DBSIZE);		
 	if(errCode != cudaSuccess) {
 	cout << "\nError: database alloc -- error with code " << errCode << endl; cout.flush(); 
 	}
@@ -1953,30 +1976,30 @@ void distanceTableNDBruteForce(std::vector<std::vector<DTYPE> > * NDdataPoints, 
 
 
 	//copy the database from the ND vector to the array:
-	for (int i=0; i<(*DBSIZE); i++){
+	for (int i=0; i<DBSIZE; i++){
 		std::copy((*NDdataPoints)[i].begin(), (*NDdataPoints)[i].end(), database+(i*(GPUNUMDIM)));
 	}
 
 
 	//copy database to the device
-	errCode=cudaMemcpy(dev_database, database, sizeof(DTYPE)*(GPUNUMDIM)*(*DBSIZE), cudaMemcpyHostToDevice);	
+	errCode=cudaMemcpy(dev_database, database, sizeof(DTYPE)*GPUNUMDIM*DBSIZE, cudaMemcpyHostToDevice);	
 	if(errCode != cudaSuccess) {
 	cout << "\nError: database2 Got error with code " << errCode << endl; 
 	}
 
 
 	//size of the database
-	unsigned int * dev_DBSIZE;
-	errCode=cudaMalloc( (void**)&dev_DBSIZE, sizeof(unsigned int));		
-	if(errCode != cudaSuccess) {
-	cout << "\nError: database size -- error with code " << errCode << endl; cout.flush(); 
-	}
+	// unsigned int * dev_DBSIZE;
+	// errCode=cudaMalloc( (void**)&dev_DBSIZE, sizeof(unsigned int));		
+	// if(errCode != cudaSuccess) {
+	// cout << "\nError: database size -- error with code " << errCode << endl; cout.flush(); 
+	// }
 
-	//copy database to the device
-	errCode=cudaMemcpy(dev_DBSIZE, DBSIZE, sizeof(unsigned int), cudaMemcpyHostToDevice);	
-	if(errCode != cudaSuccess) {
-	cout << "\nError: database size Got error with code " << errCode << endl; 
-	}
+	// //copy database to the device
+	// errCode=cudaMemcpy(dev_DBSIZE, DBSIZE, sizeof(unsigned int), cudaMemcpyHostToDevice);	
+	// if(errCode != cudaSuccess) {
+	// cout << "\nError: database size Got error with code " << errCode << endl; 
+	// }
 
 	//printf("\n size of database: %d",N);
 
@@ -2178,28 +2201,28 @@ void distanceTableNDBruteForce(std::vector<std::vector<DTYPE> > * NDdataPoints, 
 	unsigned int * batchOffset; 
 	batchOffset=(unsigned int*)malloc(sizeof(unsigned int)*GPUSTREAMS);
 	
-	unsigned int * dev_offset; 
-	dev_offset=(unsigned int*)malloc(sizeof(unsigned int)*GPUSTREAMS);
+	// unsigned int * dev_offset; 
+	// dev_offset=(unsigned int*)malloc(sizeof(unsigned int)*GPUSTREAMS);
 
-	//allocate on the device
-	errCode=cudaMalloc((void**)&dev_offset, sizeof(unsigned int)*GPUSTREAMS);
-	if(errCode != cudaSuccess) {
-	cout << "\nError: Alloc offset -- error with code " << errCode << endl; 
-	}
+	// //allocate on the device
+	// errCode=cudaMalloc((void**)&dev_offset, sizeof(unsigned int)*GPUSTREAMS);
+	// if(errCode != cudaSuccess) {
+	// cout << "\nError: Alloc offset -- error with code " << errCode << endl; 
+	// }
 
 	//Batch number to calculate the point to process (in conjunction with the offset)
 	//offset into the database when batching the results
 	unsigned int * batchNumber; 
 	batchNumber=(unsigned int*)malloc(sizeof(unsigned int)*GPUSTREAMS);
 
-	unsigned int * dev_batchNumber; 
-	dev_batchNumber=(unsigned int*)malloc(sizeof(unsigned int)*GPUSTREAMS);
+	// unsigned int * dev_batchNumber; 
+	// dev_batchNumber=(unsigned int*)malloc(sizeof(unsigned int)*GPUSTREAMS);
 
-	//allocate on the device
-	errCode=cudaMalloc((void**)&dev_batchNumber, sizeof(unsigned int)*GPUSTREAMS);
-	if(errCode != cudaSuccess) {
-	cout << "\nError: Alloc batch number -- error with code " << errCode << endl; 
-	}
+	// //allocate on the device
+	// errCode=cudaMalloc((void**)&dev_batchNumber, sizeof(unsigned int)*GPUSTREAMS);
+	// if(errCode != cudaSuccess) {
+	// cout << "\nError: Alloc batch number -- error with code " << errCode << endl; 
+	// }
 
 	////////////////////////////////////
 	//END OFFSET INTO THE DATABASE FOR BATCHING THE RESULTS
@@ -2207,20 +2230,27 @@ void distanceTableNDBruteForce(std::vector<std::vector<DTYPE> > * NDdataPoints, 
 	////////////////////////////////////
 
 	//RE-WRITE BATCH ESTIMATOR HERE
-	unsigned long long estimatedNeighbors=0;
-	estimatedNeighbors=((*QUERYSIZE*1.0)*(*DBSIZE*1.0));
+	// unsigned long long estimatedNeighbors=0;
+	// estimatedNeighbors=((*QUERYSIZE*1.0)*(*DBSIZE*1.0));
 	
 	printf("\n***Not estimating batches using the batch estimator kernel -- Brute Force");
 
 	
 	unsigned int GPUBufferSize=GPUBUFFERSIZE;		
-	//because some batches may get more points than another batch, need to overestimate (*1.2)
-	unsigned int numBatches=ceil((estimatedNeighbors*1.2)/(GPUBufferSize*1.0));
+	//Each query point is going to compute the distances to all data points
+	//so we need to compute the number of query points that can be computed per batch and use that
+	//to compute the total number of batches
+	// unsigned int numBatches=ceil((estimatedNeighbors*1.2)/(GPUBufferSize*1.0));
+
+	unsigned int queriesPerBatch = floor((GPUBufferSize*1.0)/(DBSIZE*1.0));
+
+	unsigned int numBatches = ceil((*QUERYSIZE*1.0)/(queriesPerBatch*1.0));
 	
-	printf("\nNumber of batches brute force: %u, GPUBufferSize: %u",numBatches, GPUBufferSize);
+	fprintf(stderr, "\n[Brute Force] Number of batches brute force: %u, queriesPerBatch: %u, GPUBufferSize: %u",numBatches, queriesPerBatch, GPUBufferSize);
 	
 
-	
+
+
 
 
 	/////////////////////////////////////////////////////////	
@@ -2233,30 +2263,33 @@ void distanceTableNDBruteForce(std::vector<std::vector<DTYPE> > * NDdataPoints, 
 
 
 	//dynamic
-	unsigned int * threadsForDistanceCalc=(unsigned int *)malloc(sizeof(unsigned int));
+	// unsigned int * threadsForDistanceCalc=(unsigned int *)malloc(sizeof(unsigned int));
 	unsigned int pointsPerBatch=ceil((*QUERYSIZE*1.0)/(numBatches*1.0));
 	printf("\n[THREADMULTI==-1 (Dynamic, Brute Force)] *QUERYSIZE: %u, numBatches: %u", *QUERYSIZE, numBatches);
-	*threadsForDistanceCalc=ceil((DYNAMICTHRESHOLD*1.0)/(pointsPerBatch*1.0));
+	unsigned int threadsForDistanceCalc=ceil((DYNAMICTHRESHOLD*1.0)/(pointsPerBatch*1.0));
+	
+
+
 	
 	//make sure that the number of threads per point doesn't exceed the maximum allowable (to prevent 1 thread with thousands of threads)	
 	// *threadsForDistanceCalc=min(MAXTHREADSPERPOINT,*threadsForDistanceCalc);
-	printf("\n[THREADMULTI==-1 (Dynamic, Brute Force)] Points per batch: %u, Threads Per Point: %u",pointsPerBatch, *threadsForDistanceCalc);
+	printf("\n[THREADMULTI==-1 (Dynamic, Brute Force)] Points per batch: %u, Threads Per Point: %u",pointsPerBatch, threadsForDistanceCalc);
 
 
 
 	//copy threads to the device
-	unsigned int * dev_threadsForDistanceCalc;
+	// unsigned int * dev_threadsForDistanceCalc;
 
-	//allocate on the device
-	errCode=cudaMalloc((void**)&dev_threadsForDistanceCalc, sizeof(unsigned int));
-	if(errCode != cudaSuccess) {
-	cout << "\nError: threadsForDistanceCalc -- error with code " << errCode << endl; 
-	}
+	// //allocate on the device
+	// errCode=cudaMalloc((void**)&dev_threadsForDistanceCalc, sizeof(unsigned int));
+	// if(errCode != cudaSuccess) {
+	// cout << "\nError: threadsForDistanceCalc -- error with code " << errCode << endl; 
+	// }
 
-	errCode=cudaMemcpy(dev_threadsForDistanceCalc, threadsForDistanceCalc, sizeof(unsigned int), cudaMemcpyHostToDevice);	
-	if(errCode != cudaSuccess) {
-	cout << "\nError: threadsForDistanceCalc Got error with code " << errCode << endl; 
-	}
+	// errCode=cudaMemcpy(dev_threadsForDistanceCalc, threadsForDistanceCalc, sizeof(unsigned int), cudaMemcpyHostToDevice);	
+	// if(errCode != cudaSuccess) {
+	// cout << "\nError: threadsForDistanceCalc Got error with code " << errCode << endl; 
+	// }
 
 
 
@@ -2580,10 +2613,10 @@ void distanceTableNDBruteForce(std::vector<std::vector<DTYPE> > * NDdataPoints, 
 			
 			//copy N to device 
 			//N IS THE NUMBER OF THREADS
-			errCode=cudaMemcpyAsync( &dev_N[tid], &N[tid], sizeof(unsigned int), cudaMemcpyHostToDevice, stream[tid] );
-			if(errCode != cudaSuccess) {
-			cout << "\nError: N Got error with code " << errCode << endl; 
-			}
+			// errCode=cudaMemcpyAsync( &dev_N[tid], &N[tid], sizeof(unsigned int), cudaMemcpyHostToDevice, stream[tid] );
+			// if(errCode != cudaSuccess) {
+			// cout << "\nError: N Got error with code " << errCode << endl; 
+			// }
 
 			//the batched result set size (reset to 0):
 			cnt[tid]=0;
@@ -2594,17 +2627,17 @@ void distanceTableNDBruteForce(std::vector<std::vector<DTYPE> > * NDdataPoints, 
 
 			//the offset for batching, which keeps track of where to start processing at each batch
 			batchOffset[tid]=numBatches; //for the strided
-			errCode=cudaMemcpyAsync( &dev_offset[tid], &batchOffset[tid], sizeof(unsigned int), cudaMemcpyHostToDevice, stream[tid] );
-			if(errCode != cudaSuccess) {
-			cout << "\nError: dev_offset memcpy Got error with code " << errCode << endl; 
-			}
+			// errCode=cudaMemcpyAsync( &dev_offset[tid], &batchOffset[tid], sizeof(unsigned int), cudaMemcpyHostToDevice, stream[tid] );
+			// if(errCode != cudaSuccess) {
+			// cout << "\nError: dev_offset memcpy Got error with code " << errCode << endl; 
+			// }
 
 			//the batch number for batching with strided
 			batchNumber[tid]=i;
-			errCode=cudaMemcpyAsync( &dev_batchNumber[tid], &batchNumber[tid], sizeof(unsigned int), cudaMemcpyHostToDevice, stream[tid] );
-			if(errCode != cudaSuccess) {
-			cout << "\nError: dev_batchNumber memcpy Got error with code " << errCode << endl; 
-			}
+			// errCode=cudaMemcpyAsync( &dev_batchNumber[tid], &batchNumber[tid], sizeof(unsigned int), cudaMemcpyHostToDevice, stream[tid] );
+			// if(errCode != cudaSuccess) {
+			// cout << "\nError: dev_batchNumber memcpy Got error with code " << errCode << endl; 
+			// }
 
 			/*
 			#if THREADMULTI==0
@@ -2636,9 +2669,10 @@ void distanceTableNDBruteForce(std::vector<std::vector<DTYPE> > * NDdataPoints, 
 			*/
 
 			//Dynamic for brute force
-			const int TOTALBLOCKS=ceil((1.0*(N[tid])*(*threadsForDistanceCalc))/(1.0*BLOCKSIZE));	
-			printf("\ntotal blocks (THREADMULTI DYNAMIC Brute Force, ThreadsPerPoint: %u, for more distance calculation threads per query point per iteration): %d",*threadsForDistanceCalc, TOTALBLOCKS);
+			const int TOTALBLOCKS=ceil((1.0*(N[tid])*(threadsForDistanceCalc))/(1.0*BLOCKSIZE));	
+			printf("\ntotal blocks (THREADMULTI DYNAMIC Brute Force, ThreadsPerPoint: %u, for more distance calculation threads per query point per iteration): %d",threadsForDistanceCalc, TOTALBLOCKS);
 			
+
 
 			
 			
@@ -2651,9 +2685,9 @@ void distanceTableNDBruteForce(std::vector<std::vector<DTYPE> > * NDdataPoints, 
 			// dev_gridCellNDMaskOffsets, dev_pointIDKey[tid], dev_pointInDistValue[tid], dev_distancesKeyValue[tid], dev_queryPts, dev_threadsForDistanceCalc, dev_workCounts);
 
 
-			kernelNDBruteForce<<< TOTALBLOCKS, BLOCKSIZE, 0, stream[tid]>>>(dev_debug1, dev_debug2, &dev_N[tid], dev_DBSIZE,
-			&dev_offset[tid], &dev_batchNumber[tid], dev_database, &dev_cnt[tid], dev_pointIDKey[tid], dev_pointInDistValue[tid], dev_distancesKeyValue[tid], 
-			dev_queryPts, dev_threadsForDistanceCalc, dev_workCounts);
+			kernelNDBruteForce<<< TOTALBLOCKS, BLOCKSIZE, 0, stream[tid]>>>(dev_debug1, dev_debug2, N[tid], DBSIZE,
+			batchOffset[tid], batchNumber[tid], dev_database, &dev_cnt[tid], dev_pointIDKey[tid], dev_pointInDistValue[tid], dev_distancesKeyValue[tid], 
+			dev_queryPts, threadsForDistanceCalc, dev_workCounts);
 
 			// __global__ void kernelNDBruteForce(unsigned int *debug1, unsigned int *debug2, unsigned int *N, unsigned int * DBSIZE, 
 			// unsigned int * offset, unsigned int *batchNum, DTYPE* database, unsigned int * cnt, 
@@ -2673,7 +2707,7 @@ void distanceTableNDBruteForce(std::vector<std::vector<DTYPE> > * NDdataPoints, 
 			// find the size of the number of results
 			errCode=cudaMemcpyAsync( &cnt[tid], &dev_cnt[tid], sizeof(unsigned int), cudaMemcpyDeviceToHost, stream[tid] );
 			if(errCode != cudaSuccess) {
-			cout << "\nError: getting cnt from GPU Got error with code " << errCode << endl; 
+			cout << "\nError: [distanceTableNDBruteForce] getting cnt from GPU Got error with code " << errCode << endl; 
 			}
 			else{
 				printf("\nGPU: result set size within epsilon (GPU grid): %d",cnt[tid]);cout.flush();
@@ -2681,6 +2715,13 @@ void distanceTableNDBruteForce(std::vector<std::vector<DTYPE> > * NDdataPoints, 
 			}
 
 
+
+			//need to make sure cnt[tid] is copied before checking its value
+			cudaStreamSynchronize(stream[tid]);
+			if(cnt[tid]==0){
+				printf("\nReturned count is 0 so there aren't any results to sort, continuing to next iteration.");
+				continue;
+			}
 			
 
 			
@@ -2782,16 +2823,19 @@ void distanceTableNDBruteForce(std::vector<std::vector<DTYPE> > * NDdataPoints, 
 			//COMMENTING FOR TESTING
 
 			
-			double fillerargdist=0;
+			double totaldisttmp=0;
 
 			double knnStoreStart=omp_get_wtime();
 			storeNeighborTableForkNNOnTheFly(pointIDKey[tid], pointInDistValue[tid], distancesKeyValue[tid], 
-				&cnt[tid], NDdataPoints, k_neighbors, queryPtsVect, nearestNeighborTable, nearestNeighborTableDistances, &fillerargdist);
+				&cnt[tid], NDdataPoints, k_neighbors, queryPtsVect, nearestNeighborTable, nearestNeighborTableDistances, &totaldisttmp);
 
 			double knnStoreEnd=omp_get_wtime();
 			printf("\nkNN store time: %f", knnStoreEnd - knnStoreStart);
 			
+			#pragma omp critical
+			*totaldistance+=totaldisttmp;
 
+			
 
 			//add the batched result set size to the total count
 			totalResultsLoop+=cnt[tid];
@@ -2800,7 +2844,7 @@ void distanceTableNDBruteForce(std::vector<std::vector<DTYPE> > * NDdataPoints, 
 			//add the batched result set size to the total count
 			totalResultsLoop+=cnt[tid];
 
-			printf("\nRunning total of total size of result array, tid: %d: %lu", tid, totalResultsLoop);
+			printf("\n[Brute Force] Running total of total size of result array, tid: %d: %lu", tid, totalResultsLoop);
 			//}
 			
 	
@@ -2820,7 +2864,7 @@ void distanceTableNDBruteForce(std::vector<std::vector<DTYPE> > * NDdataPoints, 
 
 	
 	
-	printf("\nTOTAL RESULT SET SIZE ON HOST:  %lu", totalResultsLoop);
+	printf("\n[Brute Force] TOTAL RESULT SET SIZE ON HOST:  %lu", totalResultsLoop);
 	*totalNeighbors=totalResultsLoop;
 
 
@@ -2899,9 +2943,8 @@ void distanceTableNDBruteForce(std::vector<std::vector<DTYPE> > * NDdataPoints, 
 	// cudaFree(dev_epsilon);
 	cudaFree(dev_N); 	
 	cudaFree(dev_cnt); 
-	cudaFree(dev_offset); 
-	cudaFree(dev_batchNumber); 
-	cudaFree(dev_threadsForDistanceCalc);
+	// cudaFree(dev_offset); 
+	// cudaFree(dev_batchNumber); 
 	cudaFree(dev_queryPts);
 	cudaFree(dev_workCounts);
 	
@@ -3306,7 +3349,7 @@ void sampleNeighborsBruteForce(std::vector<std::vector <DTYPE> > * NDdataPoints,
 	//The total number of distance calculations
 	errCode=cudaMemcpy( cnt, dev_cnt, sizeof(unsigned long long int), cudaMemcpyDeviceToHost );
 	if(errCode != cudaSuccess) {
-	cout << "\nError: getting cnt from GPU Got error with code " << errCode << endl; 
+	cout << "\nError: [sampleNeighborsBruteForce] getting cnt from GPU Got error with code " << errCode << endl; 
 	}
 	else
 	{
@@ -3720,9 +3763,13 @@ void populateNDGridIndexAndLookupArrayGPU(std::vector<std::vector <DTYPE> > *NDd
 {
 
 	printf("\nIndexing on the GPU");
+	
+	
 
 	//CUDA error code:
 	cudaError_t errCode;
+
+
 
 
 	///////////////////////////////////
@@ -3733,7 +3780,8 @@ void populateNDGridIndexAndLookupArrayGPU(std::vector<std::vector <DTYPE> > *NDd
 	DBSIZE=(unsigned int*)malloc(sizeof(unsigned int));
 	*DBSIZE=NDdataPoints->size();
 	
-	printf("\nDBSIZE is: %u",*DBSIZE);cout.flush();
+	printf("\nDBSIZE is: %u",*DBSIZE);
+	
 
 	unsigned int * dev_DBSIZE;
 
@@ -3743,12 +3791,13 @@ void populateNDGridIndexAndLookupArrayGPU(std::vector<std::vector <DTYPE> > *NDd
 	cout << "\nError: database N -- error with code " << errCode << endl; cout.flush(); 
 	}
 
-
 	//copy database size to the device
 	errCode=cudaMemcpy(dev_DBSIZE, DBSIZE, sizeof(unsigned int), cudaMemcpyHostToDevice);	
 	if(errCode != cudaSuccess) {
 	cout << "\nError: database size Got error with code " << errCode << endl; 
 	}
+
+	
 	
 	DTYPE* database= (DTYPE*)malloc(sizeof(DTYPE)*(*DBSIZE)*(GPUNUMDIM));  
 	
@@ -3760,6 +3809,7 @@ void populateNDGridIndexAndLookupArrayGPU(std::vector<std::vector <DTYPE> > *NDd
 	cout << "\nError: database alloc -- error with code " << errCode << endl; cout.flush(); 
 	}
 
+	
 
 	//copy the database from the ND vector to the array:
 	for (int i=0; i<(*DBSIZE); i++){
@@ -3772,8 +3822,6 @@ void populateNDGridIndexAndLookupArrayGPU(std::vector<std::vector <DTYPE> > *NDd
 	if(errCode != cudaSuccess) {
 	cout << "\nError: database2 Got error with code " << errCode << endl; 
 	}
-
-
 
 
 	//printf("\n size of database: %d",N);
@@ -3821,6 +3869,8 @@ void populateNDGridIndexAndLookupArrayGPU(std::vector<std::vector <DTYPE> > *NDd
 	cout << "\nError: Copy nCells to device -- error with code " << errCode << endl; 
 	}	
 
+
+	// fprintf(stderr, "\nNumber of cells: %u", *nCells);
 
 	///////////////////////////////////
 	//END COPY GRID DIMENSIONS TO THE GPU
@@ -3872,28 +3922,37 @@ void populateNDGridIndexAndLookupArrayGPU(std::vector<std::vector <DTYPE> > *NDd
 
 
 	const int TOTALBLOCKS=ceil((1.0*(*DBSIZE))/(1.0*BLOCKSIZE));	
-	printf("\ntotal blocks: %d",TOTALBLOCKS);
+	printf("\ntotal blocks [indexing]: %d",TOTALBLOCKS);
 
 	kernelIndexComputeNonemptyCells<<< TOTALBLOCKS, BLOCKSIZE>>>(dev_database, dev_DBSIZE, dev_epsilon, dev_minArr, dev_nCells, dev_pointCellArr);
 
 
 	cudaDeviceSynchronize();
+	cout<<"\n** ERROR FROM KERNEL LAUNCH OF kernelIndexComputeNonemptyCells: "<<cudaGetLastError();fflush(stdout);
 
 	thrust::device_ptr<uint64_t> dev_pointCellArr_ptr(dev_pointCellArr);
 
 	thrust::device_ptr<uint64_t> dev_new_end;
 
+	//first sort
 	try{
-		//first sort
 		thrust::sort(thrust::device, dev_pointCellArr_ptr, dev_pointCellArr_ptr + (*DBSIZE)); //, thrust::greater<uint64_t>()
-		//then unique
+	}
+	catch(thrust::system_error e){
+	std::cerr << "\nError inside sort when constructing index: \n" << e.what() << std::endl;
+	// fprintf(stderr, "\nDBSIZE: %u", (*DBSIZE));
+	exit(-1);
+	}
+
+	//then unique
+	try{
 		dev_new_end=thrust::unique(thrust::device, dev_pointCellArr_ptr, dev_pointCellArr_ptr + (*DBSIZE));
 	}
-	catch(std::bad_alloc &e)
-	{
-	 	std::cerr << "Ran out of memory while sorting, "<< std::endl;
-	    exit(-1);
-    }
+		catch(thrust::system_error e){
+		std::cerr << "\nError inside unique when constructing index: \n\n" << e.what() << std::endl;
+		exit(-1);
+	}
+	
 
 
 
