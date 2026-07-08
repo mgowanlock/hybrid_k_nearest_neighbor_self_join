@@ -8,8 +8,8 @@
 //GPUNUMDIM - The number of data dimensions
 //NUMINDEXEDDIM - The number of dimensions used for indexing
 //Recommended parameters: Set both of these to the number of dimensions when the number of data dimensions (GPUNUMDIM) is <=6
-#define GPUNUMDIM 3
-#define NUMINDEXEDDIM 3
+#define GPUNUMDIM 2
+#define NUMINDEXEDDIM 2
 
 //This stores the points within the distance of each query for multiple streams
 //If your GPU has a memory allocation error, it's likely that this value needs to be decreased to allow
