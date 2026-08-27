@@ -58,7 +58,7 @@ struct GPUQueryNumPts{
 };
 
 struct workArray{
-		unsigned int queryPntID;
+		uint64_t queryPntID;
 		unsigned long int pntsInCell;
 		
 };

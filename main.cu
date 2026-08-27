@@ -76,7 +76,7 @@ using namespace std;
 //function prototypes
 
 
-void printNeighborTable(unsigned int databaseSize, int k_Neighbors, int * nearestNeighborTable, DTYPE * nearestNeighborTableDistances);
+void printNeighborTable(unsigned int databaseSize, uint64_t k_Neighbors, uint64_t * nearestNeighborTable, DTYPE * nearestNeighborTableDistances);
 void splitWork(unsigned int k_neighbors, std::vector<unsigned int> * queriesCPU, std::vector<unsigned int> * queriesGPU, struct gridCellLookup * gridCellLookupArr, unsigned int * nNonEmptyCells, unsigned int * indexLookupArr, struct grid * index);
 void generateNeighborTableCPUPrototype(std::vector<std::vector <DTYPE> > *NDdataPoints, unsigned int queryPoint, DTYPE epsilon, grid * index, struct gridCellLookup * gridCellLookupArr, unsigned int * nNonEmptyCells, unsigned int * indexLookupArr, std::vector<uint64_t> * cellsToCheck, table * neighborTableCPUPrototype);
 void findNonEmptyCellsPrototype(DTYPE * point, DTYPE* epsilon, grid * index, DTYPE* minArr, struct gridCellLookup * gridCellLookupArr, unsigned int * nNonEmptyCells, unsigned int * nCells, unsigned int * gridCellNDMask, unsigned int * gridCellNDMaskOffsets, std::vector<uint64_t> * cellsToCheck);
@@ -92,15 +92,15 @@ void procNeighborTableForkNN(std::vector<std::vector<DTYPE> > * NDdataPoints, ne
 void storeNeighborTableForkNN(std::vector<std::vector<DTYPE> > * NDdataPoints, neighborTableLookup * neighborTable, int k_Neighbors, std::vector<unsigned int> *queryPts, int ** nearestNeighborTable, DTYPE ** nearestNeighborTableDistances);
 double estimateEpsilon(std::vector<std::vector<DTYPE> > * NDdataPoints, unsigned int k_neighbors);
 bool checkIndexSelectivity(unsigned int * nCells);
-void procNeighborTableForkNNUsingDirectTable(std::vector<std::vector<DTYPE> > * NDdataPoints, int k_Neighbors, std::vector<unsigned int> *queryPts, int * nearestNeighborTable);
+void procNeighborTableForkNNUsingDirectTable(std::vector<std::vector<DTYPE> > * NDdataPoints, int k_Neighbors, std::vector<uint64_t> *queryPts, uint64_t * nearestNeighborTable);
 //only the GPU queries are considered
-void procNeighborTableForkNNUsingDirectTableGPUOnly(std::vector<std::vector<DTYPE> > * NDdataPoints, int k_Neighbors, std::vector<unsigned int> *queryPts, int * nearestNeighborTable);
+void procNeighborTableForkNNUsingDirectTableGPUOnly(std::vector<std::vector<DTYPE> > * NDdataPoints, int k_Neighbors, std::vector<uint64_t> *queryPts, uint64_t * nearestNeighborTable);
 
 //To be used in loop condition
 int criticalCheckEquality(unsigned int * totalQueriesCompleted, unsigned long int TotalQueries);
 
 
-void computeWorkDifficulty(unsigned int * outputOrderedQueryPntIDs, struct gridCellLookup * gridCellLookupArr, unsigned int * nNonEmptyCells, unsigned int * indexLookupArr, struct grid * index);
+void computeWorkDifficulty(uint64_t * outputOrderedQueryPntIDs, struct gridCellLookup * gridCellLookupArr, unsigned int * nNonEmptyCells, uint64_t * indexLookupArr, struct grid * index);
 
 //for outlier scores:
 void printOutlierScores(unsigned int databaseSize, int k_Neighbors, int * nearestNeighborTable, DTYPE * nearestNeighborTableDistances);
@@ -162,19 +162,18 @@ int main(int argc, char *argv[])
 	importNDDataset(&NDdataPoints, inputFname);
 
 
-	int * nearestNeighborTable;
+	
 	// DTYPE * nearestNeighborTableDistances;
 	//size allocated- only allocate on master rank (rank nprocs-1)
-	unsigned long int elemBuffer=NDdataPoints.size()*(kNN+1);
+	uint64_t elemBuffer=NDdataPoints.size()*(kNN+1);
 	printf("\nNumber of data points: %lu",NDdataPoints.size());
-	nearestNeighborTable=(int *)malloc(sizeof(int)*elemBuffer);
+	uint64_t * nearestNeighborTable=(uint64_t *)malloc(sizeof(uint64_t)*elemBuffer);
 	
 	
 	
 	
 	
-	int * ptr_to_neighbortable; //points to the neighbortable starting at elem 0 (in rank nprocs-1's memory)
-	ptr_to_neighbortable=nearestNeighborTable;
+	uint64_t * ptr_to_neighbortable = nearestNeighborTable; //points to the neighbortable starting at elem 0 (in rank nprocs-1's memory)
 	
 	DTYPE * ptr_to_neighbortable_distances=(DTYPE *)malloc(sizeof(DTYPE)*elemBuffer); //updated this for outlier detection; was NULL, but needs to be allocated
 	
@@ -225,10 +224,25 @@ int main(int argc, char *argv[])
 
     printf("\nMain: estimate of epsilon: %0.9f",eps_est);
     // eps_est_initial=eps_est;
+
+
+    //Breakpoint 1:
+    // printf("\nReturning early... (Breakpoint 1)\n\n");fflush(stdout);
+    // fprintf(stderr,"\nReturning early... (Breakpoint 1)\n\n");
+    // return 0;
+
 	
 
 	generateNDGridDimensions(&NDdataPoints,eps_est, minArr, maxArr, nCells, &totalCells);
 	printf("\nGrid: total cells (including empty) %lu",totalCells);
+
+
+	// printf("\nBreakpoint 1A\n\n");fflush(stdout);
+    // fprintf(stderr,"\nBreakpoint 1A\n\n");
+
+	// printf("\nReturning early... (Breakpoint 1A)\n\n");fflush(stdout);
+    // fprintf(stderr,"\nReturning early... (Breakpoint 1A)\n\n");
+    // return 0;
 
 	
 
@@ -246,8 +260,11 @@ int main(int argc, char *argv[])
 	// unsigned int * gridCellNDMaskOffsets=new unsigned int [NUMINDEXEDDIM*2]; //offsets into the above array for each dimension
 																	//as [min,max,min,max,min,max] (for 3-D)	
 
+	
+
+
 	//ids of the elements in the database that are found in each grid cell
-	unsigned int * indexLookupArr=new unsigned int[NDdataPoints.size()]; 
+	uint64_t * indexLookupArr=new uint64_t[NDdataPoints.size()]; 
 	
 	//CPU indexing- GPGPU paper
 	// populateNDGridIndexAndLookupArray(&NDdataPoints, eps_est, &gridCellLookupArr, &index, indexLookupArr, minArr,  nCells, totalCells, &nNonEmptyCells);
@@ -255,6 +272,10 @@ int main(int argc, char *argv[])
 	//GPU indexing
 	populateNDGridIndexAndLookupArrayGPU(&NDdataPoints, &eps_est, minArr, totalCells, nCells, &gridCellLookupArr, &index, indexLookupArr, &nNonEmptyCells);
 	
+
+	// printf("\nReturning early... (Breakpoint 2)\n\n");fflush(stdout);
+    // fprintf(stderr,"\nReturning early... (Breakpoint 2)\n\n");
+    // return 0;
 
 
 	//Neighbortable storage -- the result
@@ -269,21 +290,24 @@ int main(int argc, char *argv[])
 	{
 		for (uint64_t j=0; j<(uint64_t)kNN+1; j++)
 		{
-		ptr_to_neighbortable[cnt]=-1;	
+
+		// ptr_to_neighbortable[cnt]=-1;	
+		//Aug 22			
+		ptr_to_neighbortable[cnt]=std::numeric_limits<uint64_t>::max();	
 		cnt++;
 		}
 	}
 
 
 	
-	unsigned int * outputOrderedQueryPntIDs=new unsigned int[NDdataPoints.size()];
+	uint64_t * outputOrderedQueryPntIDs=new uint64_t[NDdataPoints.size()];
 	//Order the work based on points in each cell
 	double tstartOrderWork=omp_get_wtime();
 	computeWorkDifficulty(outputOrderedQueryPntIDs, gridCellLookupArr, &nNonEmptyCells, indexLookupArr, index);
 
 
-	//store the number of queries so we can compute the fail rate of the batch (used for increasing epsilon)
-	std::vector<unsigned int>queriesGPU;
+	//store the number of queries so we can compute the fail rate of the batch (used for increasing epsilon in the hybrid algorithm)
+	std::vector<uint64_t>queriesGPU;
 	queriesGPU.insert(queriesGPU.end(), &outputOrderedQueryPntIDs[0], &outputOrderedQueryPntIDs[NDdataPoints.size()]);
 
 
@@ -307,6 +331,12 @@ int main(int argc, char *argv[])
 
 	
 
+	//Breakpoint 3:
+	// printf("\nBreakpoint 3\n\n");fflush(stdout);
+    // fprintf(stderr,"\nBreakpoint 3\n\n");
+    // printf("\nReturning early... (Breakpoint 3)\n\n");fflush(stdout);
+    // fprintf(stderr,"\nReturning early... (Breakpoint 3)\n\n");
+    // return 0;
 
 
 
@@ -314,12 +344,29 @@ int main(int argc, char *argv[])
 
 	double fractionFailuresPrevIter=0;
 
+	//brute force fallback parameters:
 	bool bruteForceFlag = false;
+	
 	//the number of queries left before triggering brute force
-	unsigned int bruteForceQueryThreshold = 0.000005*numQueries;  
+	//if this is 0 then the number of queries processed by brute force is 0 and we only use the index
+	
+	
+	
+	
+	
+	//The number of queries that will be processed per batch using the brute force fall back
 
-	//XXX
-	// while (numQueries!=-1)
+	unsigned int queriesPerBatchBruteForce = floor((GPUBUFFERSIZE*1.0)/(NDdataPoints.size()*1.0));
+	//if the number of queries is 0 (because queriesPerBatchBruteForce>GPUBUFFERSIZE)
+	//then set bruteForceQueryThreshold = 0
+	unsigned int bruteForceQueryThreshold = 0.000005*numQueries;
+	if(queriesPerBatchBruteForce==0){
+		printf("\nSetting the query threshold for brute force fallback to 0.");
+		fprintf(stderr,"\nSetting the query threshold for brute force fallback to 0.");
+		bruteForceQueryThreshold = 0;  	
+	}
+	
+	//loop over queries
 	while (numQueries!=0)
 	{
 
@@ -965,7 +1012,7 @@ extern "C" void KNNJoinPy(DTYPE * dataset, unsigned int NUMPOINTS, unsigned int 
 #endif
 
 
-void printNeighborTable(unsigned int databaseSize, int k_Neighbors, int * nearestNeighborTable, DTYPE * nearestNeighborTableDistances)
+void printNeighborTable(unsigned int databaseSize, uint64_t k_Neighbors, uint64_t * nearestNeighborTable, DTYPE * nearestNeighborTableDistances)
 {
 
 	char fname[]="KNN_out.txt";
@@ -975,9 +1022,9 @@ void printNeighborTable(unsigned int databaseSize, int k_Neighbors, int * neares
 	printf("\n\nOutputting neighbors to: %s\n", fname);
 	KNN_out<<"#data point (line is the point id), neighbor point ids\n";
 
-	for (unsigned int i=0; i<databaseSize; i++)
+	for (uint64_t i=0; i<databaseSize; i++)
 	{
-		for (int j=0; j<k_Neighbors; j++)
+		for (uint64_t j=0; j<k_Neighbors; j++)
 		{
 			KNN_out<<nearestNeighborTable[i*k_Neighbors+j]<<", ";
 		}
@@ -993,9 +1040,9 @@ void printNeighborTable(unsigned int databaseSize, int k_Neighbors, int * neares
 	printf("\nOutputting distances to: %s\n", fname1);
 	KNN_out_distances<<"#data point (line is the point id), neighbor point distances\n";
 
-	for (unsigned int i=0; i<databaseSize; i++)
+	for (uint64_t i=0; i<databaseSize; i++)
 	{
-		for (int j=0; j<k_Neighbors; j++)
+		for (uint64_t j=0; j<k_Neighbors; j++)
 		{
 			KNN_out_distances<<nearestNeighborTableDistances[i*k_Neighbors+j]<<", ";
 		}
@@ -1207,7 +1254,7 @@ void procNeighborTableForkNN(std::vector<std::vector<DTYPE> > * NDdataPoints, ne
 
 
 //find if neighbortable has at least k neighbors for each point
-void procNeighborTableForkNNUsingDirectTable(std::vector<std::vector<DTYPE> > * NDdataPoints, int k_Neighbors, std::vector<unsigned int> *queryPts, int * nearestNeighborTable)
+void procNeighborTableForkNNUsingDirectTable(std::vector<std::vector<DTYPE> > * NDdataPoints, int k_Neighbors, std::vector<uint64_t> *queryPts, uint64_t * nearestNeighborTable)
 {
 
 
@@ -1217,7 +1264,9 @@ void procNeighborTableForkNNUsingDirectTable(std::vector<std::vector<DTYPE> > * 
 
 	for (uint64_t i=0; i<(uint64_t)NDdataPoints->size()*(KNN); i+=(KNN)){
 		//check to see if the neighbors haven't been found for each point, i.e., are set to -1
-		if (nearestNeighborTable[i]==-1)
+		// if (nearestNeighborTable[i]==-1)
+		//Aug 22
+		if (nearestNeighborTable[i]==std::numeric_limits<uint64_t>::max())
 		{
 			queryPts->push_back(i/KNN);
 
@@ -1246,11 +1295,11 @@ void procNeighborTableForkNNUsingDirectTable(std::vector<std::vector<DTYPE> > * 
 }
 
 
-void procNeighborTableForkNNUsingDirectTableGPUOnly(std::vector<std::vector<DTYPE> > * NDdataPoints, int k_Neighbors, std::vector<unsigned int> *queryPts, int * nearestNeighborTable)
+void procNeighborTableForkNNUsingDirectTableGPUOnly(std::vector<std::vector<DTYPE> > * NDdataPoints, int k_Neighbors, std::vector<uint64_t> *queryPts, uint64_t * nearestNeighborTable)
 {
 
 
-	std::vector<unsigned int> tmpQueries;
+	std::vector<uint64_t> tmpQueries;
 	uint64_t KNN=(uint64_t)k_Neighbors+1;
 
 	//loop over the query array for the GPU
@@ -1262,7 +1311,8 @@ void procNeighborTableForkNNUsingDirectTableGPUOnly(std::vector<std::vector<DTYP
 		//index in neighbortable result array
 		uint64_t query=(uint64_t)(*queryPts)[i];
 		uint64_t idx=query*KNN;
-		if (nearestNeighborTable[idx]==-1)
+		// if (nearestNeighborTable[idx]==-1) //Aug 22
+		if (nearestNeighborTable[idx]==std::numeric_limits<uint64_t>::max())
 		{
 			// tmpQueries.push_back(idx/(k_Neighbors+1));
 			tmpQueries.push_back((*queryPts)[i]);
@@ -2493,16 +2543,16 @@ void generateNDGridDimensions(std::vector<std::vector <DTYPE> > *NDdataPoints, D
 	printf("\nNumber of dimensions data: %d, Number of dimensions indexed: %d", GPUNUMDIM, NUMINDEXEDDIM);
 	
 	//make the min/max values for each grid dimension the first data element
-	for (int j=0; j<NUMINDEXEDDIM; j++){
+	for (uint64_t j=0; j<NUMINDEXEDDIM; j++){
 		minArr[j]=(*NDdataPoints)[0][j];
 		maxArr[j]=(*NDdataPoints)[0][j];
 	}
 
 
 
-	for (int i=1; i<NDdataPoints->size(); i++)
+	for (uint64_t i=1; i<NDdataPoints->size(); i++)
 	{
-		for (int j=0; j<NUMINDEXEDDIM; j++){
+		for (uint64_t j=0; j<NUMINDEXEDDIM; j++){
 		if ((*NDdataPoints)[i][j]<minArr[j]){
 			minArr[j]=(*NDdataPoints)[i][j];
 		}
@@ -2514,29 +2564,29 @@ void generateNDGridDimensions(std::vector<std::vector <DTYPE> > *NDdataPoints, D
 		
 
 	printf("\n");
-	for (int j=0; j<NUMINDEXEDDIM; j++){
+	for (uint64_t j=0; j<NUMINDEXEDDIM; j++){
 		printf("Data Dim: %d, min/max: %f,%f\n",j,minArr[j],maxArr[j]);
 	}	
 
 	//add buffer around each dim so no weirdness later with putting data into cells
-	for (int j=0; j<NUMINDEXEDDIM; j++){
+	for (uint64_t j=0; j<NUMINDEXEDDIM; j++){
 		minArr[j]-=epsilon;
 		maxArr[j]+=epsilon;
 	}	
 
-	for (int j=0; j<NUMINDEXEDDIM; j++){
+	for (uint64_t j=0; j<NUMINDEXEDDIM; j++){
 		printf("Appended by epsilon Dim: %d, min/max: %f,%f\n",j,minArr[j],maxArr[j]);
 	}	
 	
 	//calculate the number of cells:
-	for (int j=0; j<NUMINDEXEDDIM; j++){
+	for (uint64_t j=0; j<NUMINDEXEDDIM; j++){
 		nCells[j]=ceil((maxArr[j]-minArr[j])/epsilon);
 		printf("Number of cells dim: %d: %d\n",j,nCells[j]);
 	}
 
 	//calc total cells: num cells in each dim multiplied
 	uint64_t tmpTotalCells=nCells[0];
-	for (int j=1; j<NUMINDEXEDDIM; j++){
+	for (uint64_t j=1; j<NUMINDEXEDDIM; j++){
 		tmpTotalCells*=nCells[j];
 	}
 
@@ -2995,7 +3045,7 @@ void splitWork(unsigned int k_neighbors, std::vector<unsigned int> * queriesCPU,
 //Order the work from most to least work
 //Based on the points within each cell
 //Like the original splitwork function but we do not make a static splitting of points
-void computeWorkDifficulty(unsigned int * outputOrderedQueryPntIDs, struct gridCellLookup * gridCellLookupArr, unsigned int * nNonEmptyCells, unsigned int * indexLookupArr, struct grid * index)
+void computeWorkDifficulty(uint64_t * outputOrderedQueryPntIDs, struct gridCellLookup * gridCellLookupArr, unsigned int * nNonEmptyCells, uint64_t * indexLookupArr, struct grid * index)
 {
 
 	std::vector<workArray> totalWork; 
@@ -3003,14 +3053,12 @@ void computeWorkDifficulty(unsigned int * outputOrderedQueryPntIDs, struct gridC
 
 	//loop over each non-empty cell and find the points contained within
 	//record the number of points in the cell
-	for (int i=0; i<*nNonEmptyCells; i++)
-	{
-		unsigned int grid_cell_idx=gridCellLookupArr[i].idx;		
+	for (uint64_t i=0; i<*nNonEmptyCells; i++){
+		uint64_t grid_cell_idx=gridCellLookupArr[i].idx;		
 
-		unsigned int numPtsInCell=(index[grid_cell_idx].indexmax-index[grid_cell_idx].indexmin)+1;
+		uint64_t numPtsInCell=(index[grid_cell_idx].indexmax-index[grid_cell_idx].indexmin)+1;
 
-			for (int j=index[i].indexmin; j<=index[i].indexmax;j++)
-			{
+			for (uint64_t j=index[i].indexmin; j<=index[i].indexmax;j++){
 				workArray tmp;
 				tmp.queryPntID=indexLookupArr[j];
 				tmp.pntsInCell=numPtsInCell;

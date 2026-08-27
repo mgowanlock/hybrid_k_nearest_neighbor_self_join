@@ -3,7 +3,7 @@
 
 
 //index on the GPU
-void populateNDGridIndexAndLookupArrayGPU(std::vector<std::vector <DTYPE> > *NDdataPoints, DTYPE *epsilon, DTYPE* minArr, uint64_t totalCells, unsigned int * nCells, struct gridCellLookup ** gridCellLookupArr, struct grid ** index, unsigned int * indexLookupArr, unsigned int *nNonEmptyCells);
+void populateNDGridIndexAndLookupArrayGPU(std::vector<std::vector <DTYPE> > *NDdataPoints, DTYPE *epsilon, DTYPE* minArr, uint64_t totalCells, unsigned int * nCells, struct gridCellLookup ** gridCellLookupArr, struct grid ** index, uint64_t * indexLookupArr, unsigned int *nNonEmptyCells);
 
 void distanceTableNDSortAndSearch(std::vector<std::vector<DTYPE> > * NDdataPoints, int * nearestNeighborTable, DTYPE * nearestNeighborTableDistances,
 	std::vector<unsigned int> *queryPtsVect, DTYPE* epsilon,  unsigned int k_neighbors, 
@@ -11,16 +11,16 @@ void distanceTableNDSortAndSearch(std::vector<std::vector<DTYPE> > * NDdataPoint
 
 
 
-void distanceTableNDGridBatcheskNN(std::vector<std::vector<DTYPE> > * NDdataPoints, int * nearestNeighborTable, 
+void distanceTableNDGridBatcheskNN(std::vector<std::vector<DTYPE> > * NDdataPoints, uint64_t * nearestNeighborTable, 
 	DTYPE * nearestNeighborTableDistances,  double * totaldistance, 
-	std::vector<unsigned int> *queryPtsVect, DTYPE epsilon,  unsigned int k_neighbors, struct grid * index, 
+	std::vector<uint64_t> *queryPtsVect, DTYPE epsilon,  unsigned int k_neighbors, struct grid * index, 
 	struct gridCellLookup * gridCellLookupArr, const unsigned int nNonEmptyCells, DTYPE* minArr, unsigned int * nCells, 
-	unsigned int * indexLookupArr, struct neighborTableLookup * neighborTable, std::vector<struct neighborDataPtrs> * pointersToNeighbors, 
+	uint64_t * indexLookupArr, struct neighborTableLookup * neighborTable, std::vector<struct neighborDataPtrs> * pointersToNeighbors, 
 	uint64_t * totalNeighbors, CTYPE* workCounts);
 
 //used when the index no longer provides enough selectivity
-void distanceTableNDBruteForce(std::vector<std::vector<DTYPE> > * NDdataPoints, int * nearestNeighborTable, DTYPE * nearestNeighborTableDistances,
-	double * totaldistance, std::vector<unsigned int> *queryPtsVect,  unsigned int k_neighbors, 
+void distanceTableNDBruteForce(std::vector<std::vector<DTYPE> > * NDdataPoints, uint64_t * nearestNeighborTable, DTYPE * nearestNeighborTableDistances,
+	double * totaldistance, std::vector<uint64_t> *queryPtsVect,  unsigned int k_neighbors, 
 	uint64_t * totalNeighbors, struct neighborTableLookup * neighborTable);
 
 
@@ -31,9 +31,9 @@ void distanceTableNDBruteForce(std::vector<std::vector<DTYPE> > * NDdataPoints, 
 // 	unsigned int * dev_nCells, unsigned int * dev_nNonEmptyCells, unsigned int * retNumBatches, unsigned int * retGPUBufferSize);
 
 
-unsigned long long GPUBatchEst(unsigned int * DBSIZE, unsigned int N_QueryPts, unsigned int * dev_queryPts, unsigned int k_Neighbors, DTYPE* dev_database,
+unsigned long long GPUBatchEst(uint64_t * DBSIZE, unsigned int N_QueryPts, unsigned int * dev_queryPts, unsigned int k_Neighbors, DTYPE* dev_database,
   const DTYPE epsilon, struct grid * dev_grid, 
-	unsigned int * dev_indexLookupArr, struct gridCellLookup * dev_gridCellLookupArr, DTYPE* dev_minArr, 
+	uint64_t * dev_indexLookupArr, struct gridCellLookup * dev_gridCellLookupArr, DTYPE* dev_minArr, 
 	unsigned int * dev_nCells, const unsigned int nNonEmptyCells, unsigned int * retNumBatches, unsigned int * retGPUBufferSize);
 
 
@@ -58,5 +58,5 @@ void cleanUpPinned();
 void cleanUpNeighborTable();
 
 
-void storeNeighborTableForkNNOnTheFly(int * pointIDKey, int * pointInDistValue, DTYPE * distancePointInDistValue, unsigned int * cnt, std::vector<std::vector<DTYPE> > * NDdataPoints,
-			int k_Neighbors, std::vector<unsigned int> *queryPts, int * nearestNeighborTable, DTYPE * nearestNeighborTableDistances, double * totaldistance);
+void storeNeighborTableForkNNOnTheFly(uint64_t * pointIDKey, uint64_t * pointInDistValue, DTYPE * distancePointInDistValue, unsigned long long int * cnt, std::vector<std::vector<DTYPE> > * NDdataPoints,
+			int k_Neighbors, std::vector<uint64_t> *queryPts, uint64_t * nearestNeighborTable, DTYPE * nearestNeighborTableDistances, double * totaldistance);

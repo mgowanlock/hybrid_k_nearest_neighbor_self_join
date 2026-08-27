@@ -14,7 +14,7 @@
 //This stores the points within the distance of each query for multiple streams
 //If your GPU has a memory allocation error, it's likely that this value needs to be decreased to allow
 //for smaller batches to be processed
-#define GPUBUFFERSIZE 200000000 
+#define GPUBUFFERSIZE 500000000 
 
 
 //Optimization added after JPDC 2021 paper:
@@ -27,7 +27,7 @@
 
 //Short circuits the distance calculation when the running total distance exceeds epsilon
 #define SHORTCIRCUIT 0 //this is useful for high dimesional datasets, but not for low-dimensional datasets
-						//Recommended parameter: enable when k>4
+						//Recommended parameter: enable when GPUNUMDIM>4
 
 
 ///////////////////////
@@ -62,7 +62,7 @@
 #define MAXTHREADSPERPOINT 1024 //limit the maximum number of threads per point for dynamic threads/point (THREADMULTI==-1)
 								//prevents thousands of threads launched for a few points
 
-#define STATICTHREADSPERPOINT 8 //statically set the number of threads used for distance calculations per point (THREADMULTI==-2)
+#define STATICTHREADSPERPOINT 32 //statically set the number of threads used for distance calculations per point (THREADMULTI==-2)
 
 
 
