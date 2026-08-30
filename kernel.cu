@@ -411,13 +411,13 @@ return;
 
 
 //Kernel brute forces to estimate the average distance between points
-__global__ void kernelEstimateAvgDistBruteForce(uint64_t *N, const uint64_t sampleStride, unsigned int *debug1, unsigned int *debug2, 
+__global__ void kernelEstimateAvgDistBruteForce(const uint64_t N, const uint64_t sampleStride, unsigned int *debug1, unsigned int *debug2, 
 	unsigned long long int * cnt, DTYPE* database, double * total_distance)
 {
 //<=1% of the points for searching	
 uint64_t tid=(threadIdx.x+ (blockIdx.x*BLOCKSIZE))*sampleStride; 
 
-if (tid>=*N){
+if (tid>=N){
 	return;
 }
 
@@ -425,7 +425,7 @@ if (tid>=*N){
 
 uint64_t dataOffset=(uint64_t)tid*GPUNUMDIM;
 //compare my point to every other point sampled - 0.1%
-for (uint64_t i=threadIdx.x; i<(*N); i+=1000)
+for (uint64_t i=threadIdx.x; i<N; i+=1000)
 {
 	double runningDist=0;
 	for (uint64_t j=0; j<GPUNUMDIM; j++){
@@ -521,7 +521,7 @@ return;
 //histogram -- array data in buckets
 //bucket_width -- determines which index the distance falls into
 //offset- sample each dataset with a variable number of points based on the offset
-__global__ void kernelKDistBruteForce(uint64_t *N, unsigned int * offset, unsigned int *debug1, unsigned int *debug2, 
+__global__ void kernelKDistBruteForce(const uint64_t N, unsigned int * offset, unsigned int *debug1, unsigned int *debug2, 
 	unsigned long long int * cnt, DTYPE* database, double * avg_distance, unsigned long long int * histogram, double * bucket_width)
 {
 //1% of the points for searching	
@@ -532,7 +532,7 @@ __global__ void kernelKDistBruteForce(uint64_t *N, unsigned int * offset, unsign
 // unsigned int tid=(blockIdx.x)*(300);
 unsigned int tid=(blockIdx.x)*(*offset);
 
-if (tid>=*N){
+if (tid>N){
 	return;
 }
 
@@ -545,27 +545,27 @@ uint64_t dataOffset=(uint64_t)tid*GPUNUMDIM;
 int samplePnts=8;
 
 //compare my point to every other point sampled - 0.1%
-// for (int i=0+threadIdx.x; i<(*N); i+=1000)
+// for (int i=0+threadIdx.x; i<N; i+=1000)
 
-// unsigned int numpts=*N/1000;
+// unsigned int numptsN1000;
 
 // unsigned int minRng=max(0,tid-(numpts/2));
-// unsigned int maxRng=min((*N)-1,tid+(numpts/2));
+// unsigned int maxRng=min(N-1,tid+(numpts/2));
 
 // for (int i=minRng; i<maxRng; i++)
 
 
 //compare my point to every samplePnts block of points
-// for (int i=0; i<(*N); i+=BLOCKSIZE)
+// for (int i=0; i<N; i+=BLOCKSIZE)
 uint64_t increment = BLOCKSIZE*(uint64_t)samplePnts;
-for (uint64_t i=0; i<(*N); i+=increment)
+for (uint64_t i=0; i<N; i+=increment)
 {
 
 
 	double runningDist=0;
 	uint64_t pntID=i+(uint64_t)threadIdx.x;
 
-	if(pntID<(*N) && tid<(*N)){
+	if(pntID<N && tid<N){
 
 		for (uint64_t j=0; j<GPUNUMDIM; j++){
 			runningDist+=(database[(pntID*GPUNUMDIM)+j]-database[dataOffset+j])*(database[(pntID*GPUNUMDIM)+j]-database[dataOffset+j]);
@@ -978,9 +978,9 @@ for (int i=0; i<NUMINDEXEDDIM; i++){
 
 
 //N- query set size for the batch
-
+//NPOINTS- number of points in the dataset
 //used when the index no longer provides any selectivity
-__global__ void kernelNDBruteForce(unsigned int *debug1, unsigned int *debug2, const unsigned int N, const unsigned int DBSIZE, 
+__global__ void kernelNDBruteForce(unsigned int *debug1, unsigned int *debug2, const unsigned int N, const uint64_t NPOINTS, 
 	const unsigned int offset, const unsigned int batchNum, DTYPE* database, unsigned long long int * cnt, 
 	uint64_t * pointIDKey, uint64_t * pointInDistVal, DTYPE * distancesKeyVal, uint64_t * queryPts, const unsigned int threadsForDistanceCalc, CTYPE* workCounts)
 {
@@ -1027,7 +1027,7 @@ for (uint64_t i=0; i<GPUNUMDIM; i++){
 	DTYPE runningTotalDist=0;
 
 
-	for (uint64_t i=0; i<DBSIZE; i+=threadsDistCalcReg)
+	for (uint64_t i=0; i<NPOINTS; i+=threadsDistCalcReg)
 	{		
 		runningTotalDist=0;
 
@@ -1040,7 +1040,7 @@ for (uint64_t i=0; i<GPUNUMDIM; i++){
 		
 
 		//to ensure that the thread doesn't go past the database size
-		if (dataIdx<DBSIZE)
+		if (dataIdx<NPOINTS)
 		{
 	        for (uint64_t l=0; l<GPUNUMDIM; l++){
 	          runningTotalDist+=(database[dataIdx*GPUNUMDIM+l]-point[l])*(database[dataIdx*GPUNUMDIM+l]-point[l]);
@@ -1762,14 +1762,14 @@ bool foundMax=0;
 }
 
 
-__global__ void kernelIndexComputeNonemptyCells(DTYPE* database, uint64_t *N, DTYPE* epsilon, DTYPE* minArr, unsigned int * nCells, uint64_t * pointCellArr)
+__global__ void kernelIndexComputeNonemptyCells(DTYPE* database, const uint64_t N, DTYPE* epsilon, DTYPE* minArr, unsigned int * nCells, uint64_t * pointCellArr)
 {
 
 
 	uint64_t tid=threadIdx.x+ (blockIdx.x*BLOCKSIZE); 
 
 
-	if (tid>=*N){
+	if (tid>=N){
 		return;
 	}
 
@@ -1785,14 +1785,14 @@ __global__ void kernelIndexComputeNonemptyCells(DTYPE* database, uint64_t *N, DT
 		
 }
 
-__global__ void kernelInitEnumerateDB(uint64_t * databaseVal, uint64_t *N)
+__global__ void kernelInitEnumerateDB(uint64_t * databaseVal, const uint64_t N)
 {
 
 
 	uint64_t tid=threadIdx.x+ (blockIdx.x*BLOCKSIZE); 
 
 
-	if (tid>=*N){
+	if (tid>=N){
 		return;
 	}
 

@@ -14,6 +14,9 @@
 
 #include "params.h"
 
+#define STR_HELPER(x) #x
+#define STR(x) STR_HELPER(x)
+
 bool sortNDComp(const std::vector<DTYPE>& a, const std::vector<DTYPE>& b)
 {
     for (int i=0; i<GPUNUMDIM; i++){
@@ -46,7 +49,8 @@ bool sortNDComp(const std::vector<DTYPE>& a, const std::vector<DTYPE>& b)
 }
 
 
-
+//OLD with vectors
+/*
 void importNDDataset(std::vector<std::vector <DTYPE> > *dataPoints, char * fname)
 {
 
@@ -101,6 +105,60 @@ void importNDDataset(std::vector<std::vector <DTYPE> > *dataPoints, char * fname
   	// 	printf("%f,",(*dataPoints)[i][j]);
 
   	// }
+
+
+}
+*/
+
+//use uint64_t for offsets
+int importDataset(char * fname, uint64_t N, uint64_t NDIM, DTYPE * dataset)
+{
+
+    FILE *fp = fopen(fname, "r");
+
+    if (!fp) {
+        printf("Unable to open file\n");
+        exit(0);
+    }
+
+    char buf[4096];
+    uint64_t rowCnt = 0;
+    uint64_t colCnt = 0;
+    while (fgets(buf, 4096, fp) && rowCnt<N) {
+        colCnt = 0;
+
+        char *field = strtok(buf, ",");
+        DTYPE tmp;
+        if(STR(DTYPE)=="float")
+          sscanf(field,"%f",&tmp);
+        if(STR(DTYPE)=="double")
+          sscanf(field,"%lf",&tmp);
+        
+        
+        dataset[rowCnt*NDIM+colCnt]=tmp;
+
+        
+        while (field) {
+          colCnt++;
+          field = strtok(NULL, ",");
+          
+          if (field!=NULL)
+          {
+          DTYPE tmp;
+          if(STR(DTYPE)=="float")
+            sscanf(field,"%f",&tmp);
+          if(STR(DTYPE)=="double")
+            sscanf(field,"%lf",&tmp);
+          dataset[rowCnt*NDIM+colCnt]=tmp;
+          }   
+
+        }
+        rowCnt++;
+    }
+
+    fclose(fp);
+
+    return 0;
 
 
 }

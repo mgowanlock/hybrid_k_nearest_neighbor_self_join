@@ -83,18 +83,19 @@ void findNonEmptyCellsPrototype(DTYPE * point, DTYPE* epsilon, grid * index, DTY
 uint64_t getLinearID_nDimensions(unsigned int * indexes, unsigned int * dimLen, unsigned int nDimensions);
 void populateNDGridIndexAndLookupArray(std::vector<std::vector <DTYPE> > *NDdataPoints, DTYPE epsilon, struct gridCellLookup ** gridCellLookupArr, struct grid ** index, unsigned int * indexLookupArr,  DTYPE* minArr, unsigned int * nCells, uint64_t totalCells, unsigned int * nNonEmptyCells);
 void populateNDGridIndexAndLookupArrayParallel(std::vector<std::vector <DTYPE> > *NDdataPoints, DTYPE epsilon, struct gridCellLookup ** gridCellLookupArr, struct grid ** index, unsigned int * indexLookupArr,  DTYPE* minArr, unsigned int * nCells, uint64_t totalCells, unsigned int * nNonEmptyCells);
-void generateNDGridDimensions(std::vector<std::vector <DTYPE> > *NDdataPoints, DTYPE epsilon, DTYPE* minArr, DTYPE* maxArr, unsigned int * nCells, uint64_t * totalCells);
-void importNDDataset(std::vector<std::vector <DTYPE> > *dataPoints, char * fname);
+void generateNDGridDimensions(DTYPE * dataset, const uint64_t NPOINTS, const uint64_t NDIM, DTYPE epsilon, DTYPE* minArr, DTYPE* maxArr, unsigned int * nCells, uint64_t * totalCells);
+// void importNDDataset(std::vector<std::vector <DTYPE> > *dataPoints, char * fname);
+int importDataset(char * fname, uint64_t N, uint64_t NDIM, DTYPE * dataset);
 void CPUBruteForceTable(std::vector<std::vector <DTYPE> > *NDdataPoints, DTYPE epsilon, table * neighborTable, unsigned int * totalNeighbors);
 void sortInNDBins(std::vector<std::vector <DTYPE> > *dataPoints);
-void ReorderByDimension(std::vector<std::vector <DTYPE> > *NDdataPoints);
+void ReorderByDimension(DTYPE * dataset, const uint64_t NPOINTS, const uint64_t NDIM);
 void procNeighborTableForkNN(std::vector<std::vector<DTYPE> > * NDdataPoints, neighborTableLookup * neighborTable, int k_Neighbors, std::vector<unsigned int> *queryPts);
 void storeNeighborTableForkNN(std::vector<std::vector<DTYPE> > * NDdataPoints, neighborTableLookup * neighborTable, int k_Neighbors, std::vector<unsigned int> *queryPts, int ** nearestNeighborTable, DTYPE ** nearestNeighborTableDistances);
 double estimateEpsilon(std::vector<std::vector<DTYPE> > * NDdataPoints, unsigned int k_neighbors);
 bool checkIndexSelectivity(unsigned int * nCells);
-void procNeighborTableForkNNUsingDirectTable(std::vector<std::vector<DTYPE> > * NDdataPoints, int k_Neighbors, std::vector<uint64_t> *queryPts, uint64_t * nearestNeighborTable);
+void procNeighborTableForkNNUsingDirectTable(DTYPE * dataset, const uint64_t NPOINTS, const uint64_t NDIM, int k_Neighbors, std::vector<uint64_t> *queryPts, uint64_t * nearestNeighborTable);
 //only the GPU queries are considered
-void procNeighborTableForkNNUsingDirectTableGPUOnly(std::vector<std::vector<DTYPE> > * NDdataPoints, int k_Neighbors, std::vector<uint64_t> *queryPts, uint64_t * nearestNeighborTable);
+void procNeighborTableForkNNUsingDirectTableGPUOnly(DTYPE * dataset, const uint64_t NPOINTS, const uint64_t NDIM, int k_Neighbors, std::vector<uint64_t> *queryPts, uint64_t * nearestNeighborTable);
 
 //To be used in loop condition
 int criticalCheckEquality(unsigned int * totalQueriesCompleted, unsigned long int TotalQueries);
@@ -120,9 +121,9 @@ int main(int argc, char *argv[])
 
 	//Read in parameters from file:
 	//dataset filename and cluster instance file
-	if (argc!=4)
+	if (argc!=5)
 	{
-	cout <<"\n\nIncorrect number of input parameters.  \nShould be dataset file, number of dimensions, kNN\n";
+	cout <<"\n\nIncorrect number of input parameters.  \nShould be dataset file, number of data points, number of dimensions, kNN\n";
 	return 0;
 	}
 
@@ -134,21 +135,21 @@ int main(int argc, char *argv[])
 	}
 	
 	//copy parameters from commandline:
-	//char inputFname[]="data/test_data_removed_nan.txt";	
-	char inputFname[500];
-	char inputnumdim[500];
+	char inputDatasetFname[500];
+	uint64_t NPOINTS; //number of datapoints |D|
+	uint64_t NDIM;
+	unsigned int kNN;
+    
 
-
-	strcpy(inputFname,argv[1]);
-	strcpy(inputnumdim,argv[2]);
-
-    unsigned int kNN=atoi(argv[3]);
-	unsigned int NDIM=atoi(inputnumdim);
+    strcpy(inputDatasetFname,argv[1]);
+	sscanf(argv[2],"%lu",&NPOINTS);
+	sscanf(argv[3],"%lu",&NDIM);
+	sscanf(argv[4],"%u",&kNN);
+	
 
 	if (GPUNUMDIM!=NDIM){
 		printf("\nERROR: The number of dimensions defined for the GPU is not the same as the number of dimensions\n \
-		 passed into the computer program on the command line. GPUNUMDIM=%d, NDIM=%d Exiting!!!",GPUNUMDIM,NDIM);
-		
+		 passed into the computer program on the command line. GPUNUMDIM=%d, NDIM=%d Exiting!!!",GPUNUMDIM,NDIM);	
 		return 0;
 	}
 
@@ -157,16 +158,24 @@ int main(int argc, char *argv[])
 	//////////////////////////////
 	//import the dataset:
 	/////////////////////////////
+		
+	DTYPE * dataset = (DTYPE*)malloc(sizeof(DTYPE)*NPOINTS*NDIM);	
+	// importNDDataset(&NDdataPoints, inputDatasetFname);
+	importDataset(inputDatasetFname, NPOINTS, NDIM, dataset);
+	// printf("\nNumber of data points: %lu",NPOINTS);
+	// printf("\nNumber of dimensions: %lu", NDIM);
+	// printf("\nkNN: %u", kNN);
+
+	// printf("\nPoint 0: %f, %f, %f", dataset[0],dataset[1],dataset[2]);
+	// printf("\nPoint 1: %f, %f, %f", dataset[3],dataset[4],dataset[5]);
+
 	
-	std::vector<std::vector <DTYPE> > NDdataPoints;	
-	importNDDataset(&NDdataPoints, inputFname);
 
 
 	
 	// DTYPE * nearestNeighborTableDistances;
 	//size allocated- only allocate on master rank (rank nprocs-1)
-	uint64_t elemBuffer=NDdataPoints.size()*(kNN+1);
-	printf("\nNumber of data points: %lu",NDdataPoints.size());
+	uint64_t elemBuffer=NPOINTS*(kNN+1);
 	uint64_t * nearestNeighborTable=(uint64_t *)malloc(sizeof(uint64_t)*elemBuffer);
 	
 	
@@ -199,23 +208,27 @@ int main(int argc, char *argv[])
 	double totalTime=0;
 	double timeReorderByDimVariance=0;	
 
-	//for conssitency
+	//for consistency
 	double totalDistance=0;
 	
 
 	#if REORDER==1
 	double reorder_start=omp_get_wtime();
-	ReorderByDimension(&NDdataPoints);
+	ReorderByDimension(dataset, NPOINTS, NDIM);
 	double reorder_end=omp_get_wtime();
 	timeReorderByDimVariance= reorder_end - reorder_start;
 	#endif
+
+	// printf("\nExiting early...");
+	// fprintf(stderr,"\nExiting early...");
+	// return 0;
 
     
     DTYPE eps_est=0;
     // DTYPE eps_est_initial=0;	
     unsigned int bucket=0;
     double tstartEstEps=omp_get_wtime();
-    sampleNeighborsBruteForce(&NDdataPoints, &eps_est, &bucket, kNN);
+    sampleNeighborsBruteForce(dataset, NPOINTS, &eps_est, &bucket, kNN);
     double tendEstEps=omp_get_wtime();
     double timeEstEps=tendEstEps - tstartEstEps;
     printf("\nTime to estimate epsilon: %f", timeEstEps);
@@ -233,7 +246,7 @@ int main(int argc, char *argv[])
 
 	
 
-	generateNDGridDimensions(&NDdataPoints,eps_est, minArr, maxArr, nCells, &totalCells);
+	generateNDGridDimensions(dataset, NPOINTS, NDIM, eps_est, minArr, maxArr, nCells, &totalCells);
 	printf("\nGrid: total cells (including empty) %lu",totalCells);
 
 
@@ -264,13 +277,13 @@ int main(int argc, char *argv[])
 
 
 	//ids of the elements in the database that are found in each grid cell
-	uint64_t * indexLookupArr=new uint64_t[NDdataPoints.size()]; 
+	uint64_t * indexLookupArr=new uint64_t[NPOINTS]; 
 	
 	//CPU indexing- GPGPU paper
 	// populateNDGridIndexAndLookupArray(&NDdataPoints, eps_est, &gridCellLookupArr, &index, indexLookupArr, minArr,  nCells, totalCells, &nNonEmptyCells);
 	
 	//GPU indexing
-	populateNDGridIndexAndLookupArrayGPU(&NDdataPoints, &eps_est, minArr, totalCells, nCells, &gridCellLookupArr, &index, indexLookupArr, &nNonEmptyCells);
+	populateNDGridIndexAndLookupArrayGPU(dataset, NPOINTS, NDIM, &eps_est, minArr, totalCells, nCells, &gridCellLookupArr, &index, indexLookupArr, &nNonEmptyCells);
 	
 
 	// printf("\nReturning early... (Breakpoint 2)\n\n");fflush(stdout);
@@ -279,14 +292,14 @@ int main(int argc, char *argv[])
 
 
 	//Neighbortable storage -- the result
-	neighborTableLookup * neighborTable= new neighborTableLookup[NDdataPoints.size()];
+	neighborTableLookup * neighborTable= new neighborTableLookup[NPOINTS];
 	std::vector<struct neighborDataPtrs> pointersToNeighbors;
 
 	//initialize all of the neighbors to -1, indicating that the neighbors for a point haven't been found yet
 	
 
 	uint64_t cnt=0;
-	for (uint64_t i=0; i<(uint64_t)NDdataPoints.size(); i++)
+	for (uint64_t i=0; i<NPOINTS; i++)
 	{
 		for (uint64_t j=0; j<(uint64_t)kNN+1; j++)
 		{
@@ -300,7 +313,7 @@ int main(int argc, char *argv[])
 
 
 	
-	uint64_t * outputOrderedQueryPntIDs=new uint64_t[NDdataPoints.size()];
+	uint64_t * outputOrderedQueryPntIDs=new uint64_t[NPOINTS];
 	//Order the work based on points in each cell
 	double tstartOrderWork=omp_get_wtime();
 	computeWorkDifficulty(outputOrderedQueryPntIDs, gridCellLookupArr, &nNonEmptyCells, indexLookupArr, index);
@@ -308,7 +321,7 @@ int main(int argc, char *argv[])
 
 	//store the number of queries so we can compute the fail rate of the batch (used for increasing epsilon in the hybrid algorithm)
 	std::vector<uint64_t>queriesGPU;
-	queriesGPU.insert(queriesGPU.end(), &outputOrderedQueryPntIDs[0], &outputOrderedQueryPntIDs[NDdataPoints.size()]);
+	queriesGPU.insert(queriesGPU.end(), &outputOrderedQueryPntIDs[0], &outputOrderedQueryPntIDs[NPOINTS]);
 
 
 
@@ -322,11 +335,11 @@ int main(int argc, char *argv[])
 	double tstart=omp_get_wtime();		
 
 
-	unsigned int * queriesGPUBuffer=new unsigned int[NDdataPoints.size()];
-	unsigned int * queriesIncompleteGPUBuffer=new unsigned int[NDdataPoints.size()];
+	unsigned int * queriesGPUBuffer=new unsigned int[NPOINTS];
+	unsigned int * queriesIncompleteGPUBuffer=new unsigned int[NPOINTS];
 
 	//Get queries to work on from the producer rank
-	unsigned int numQueries=NDdataPoints.size();
+	unsigned int numQueries=NPOINTS;
 	
 
 	
@@ -356,7 +369,7 @@ int main(int argc, char *argv[])
 	
 	//The number of queries that will be processed per batch using the brute force fall back
 
-	unsigned int queriesPerBatchBruteForce = floor((GPUBUFFERSIZE*1.0)/(NDdataPoints.size()*1.0));
+	unsigned int queriesPerBatchBruteForce = floor((GPUBUFFERSIZE*1.0)/(NPOINTS*1.0));
 	//if the number of queries is 0 (because queriesPerBatchBruteForce>GPUBUFFERSIZE)
 	//then set bruteForceQueryThreshold = 0
 	unsigned int bruteForceQueryThreshold = 0.000005*numQueries;
@@ -418,13 +431,13 @@ int main(int argc, char *argv[])
 				return(0);
 			}
 			
-			generateNDGridDimensions(&NDdataPoints,eps_est, minArr, maxArr, nCells, &totalCells);
+			generateNDGridDimensions(dataset, NPOINTS, NDIM,eps_est, minArr, maxArr, nCells, &totalCells);
 
 			//CPU Index construction- used in GPGPU paper
 			// populateNDGridIndexAndLookupArrayParallel(&NDdataPoints, eps_est, &gridCellLookupArr, &index, indexLookupArr, minArr,  nCells, totalCells, &nNonEmptyCells);
 			
 			//GPU index construction:
-			populateNDGridIndexAndLookupArrayGPU(&NDdataPoints, &eps_est, minArr, totalCells, nCells, &gridCellLookupArr, &index, indexLookupArr, &nNonEmptyCells);
+			populateNDGridIndexAndLookupArrayGPU(dataset, NPOINTS, NDIM, &eps_est, minArr, totalCells, nCells, &gridCellLookupArr, &index, indexLookupArr, &nNonEmptyCells);
 			double tendindex=omp_get_wtime();
 			printf("\nGPU: Time to reindex: %f", tendindex - tstartindex);
 		}	
@@ -454,7 +467,7 @@ int main(int argc, char *argv[])
 			//if we use the index
 			if(bruteForceFlag==false){
 				double tstartGPU=omp_get_wtime();	
-				distanceTableNDGridBatcheskNN(&NDdataPoints, ptr_to_neighbortable, ptr_to_neighbortable_distances, 
+				distanceTableNDGridBatcheskNN(dataset, NPOINTS, NDIM, ptr_to_neighbortable, ptr_to_neighbortable_distances, 
 					&totaldisttmp, &queriesGPU, eps_est, kNN, index, gridCellLookupArr, nNonEmptyCells,  minArr, nCells, indexLookupArr, neighborTable, &pointersToNeighbors, &totalNeighbors, workCounts);	
 				double tendGPU=omp_get_wtime();
 				printf("\n[GRID] Time to compute distance table for KNN (epsilon=%f): %f,", eps_est, tendGPU - tstartGPU);
@@ -468,7 +481,7 @@ int main(int argc, char *argv[])
 				//&totaldisttmp, &queriesGPU, eps_est, kNN, index, gridCellLookupArr, nNonEmptyCells,  minArr, nCells, indexLookupArr, neighborTable, &pointersToNeighbors, &totalNeighbors, workCounts);	
 				printf("\n[Brute Force] Number of queries: %lu", queriesGPU.size());				
 
-				distanceTableNDBruteForce(&NDdataPoints, ptr_to_neighbortable, ptr_to_neighbortable_distances,
+				distanceTableNDBruteForce(dataset, NPOINTS, NDIM, ptr_to_neighbortable, ptr_to_neighbortable_distances,
 				&totaldisttmp, &queriesGPU, kNN, 
 				&totalNeighbors, neighborTable);
 
@@ -490,7 +503,7 @@ int main(int argc, char *argv[])
 			//only if there's more than 1 neighbor found
 			if(totalNeighbors>0){
 				double tstartprocNeighborTable=omp_get_wtime();
-				procNeighborTableForkNNUsingDirectTableGPUOnly(&NDdataPoints, kNN, &queriesGPU, ptr_to_neighbortable);
+				procNeighborTableForkNNUsingDirectTableGPUOnly(dataset, NPOINTS, NDIM, kNN, &queriesGPU, ptr_to_neighbortable);
 				double tendprocNeighborTable=omp_get_wtime();
 				printf("\nTime proc queries from neighbor table (GPU only): %f", tendprocNeighborTable- tstartprocNeighborTable);	
 			}
@@ -556,7 +569,7 @@ int main(int argc, char *argv[])
 	printf("\n[Verification] Total distance (without square root): %f",totalDistance);
 
 	//verification, check entire neighbortable
-	procNeighborTableForkNNUsingDirectTable(&NDdataPoints, kNN, &queriesGPU, ptr_to_neighbortable);
+	procNeighborTableForkNNUsingDirectTable(dataset, NPOINTS, NDIM, kNN, &queriesGPU, ptr_to_neighbortable);
 	
 
 	double gputime=tendGPU-tstart;
@@ -574,7 +587,7 @@ int main(int argc, char *argv[])
 	//Output stats to gpu_stats.txt
 	//dynamic	
 	#if THREADMULTI==-1
-	gpu_stats<<totalTime<<", "<< inputFname<<", KNN: "<<kNN<<nprocs<<", Eps bucket: "<<bucket<<", Total dist: "<<setprecision(9)<<
+	gpu_stats<<totalTime<<", "<< inputDatasetFname<<", KNN: "<<kNN<<nprocs<<", Eps bucket: "<<bucket<<", Total dist: "<<setprecision(9)<<
 	totalDistance<<", "<<
 	"GPUNUMDIM/NUMINDEXEDDIM/REORDER/SHORTCIRCUIT/ILP/THREADMULTI/MAXTHREADSPERPOINT/DYNAMICTHRESHOLD/STATICTHREADSPERPOINT/BETA/DTYPE(float/double): "
 	<<GPUNUMDIM<<", "<<NUMINDEXEDDIM<<", "<<REORDER<< ", "<<SHORTCIRCUIT<<", "<<ILP<<", "<<THREADMULTI<<", "<<MAXTHREADSPERPOINT<<", "
@@ -583,7 +596,7 @@ int main(int argc, char *argv[])
 	#endif
 
 	#if THREADMULTI==-2
-	gpu_stats<<totalTime<<", "<< inputFname<<", KNN: "<<kNN<<", Eps bucket: "<<bucket<<", Total dist: "<<setprecision(9)
+	gpu_stats<<totalTime<<", "<< inputDatasetFname<<", KNN: "<<kNN<<", Eps bucket: "<<bucket<<", Total dist: "<<setprecision(9)
 	<<totalDistance<<", "<<
 	"GPUNUMDIM/NUMINDEXEDDIM/REORDER/SHORTCIRCUIT/ILP/THREADMULTI/MAXTHREADSPERPOINT/DYNAMICTHRESHOLD/STATICTHREADSPERPOINT/BETA/DTYPE(float/double): "
 	<<GPUNUMDIM<<", "<<NUMINDEXEDDIM<<", "<<REORDER<< ", "<<SHORTCIRCUIT<<", "<<ILP<<", "<<THREADMULTI<<", "<<MAXTHREADSPERPOINT<<", N/A, "<<STATICTHREADSPERPOINT<<", "
@@ -1254,7 +1267,7 @@ void procNeighborTableForkNN(std::vector<std::vector<DTYPE> > * NDdataPoints, ne
 
 
 //find if neighbortable has at least k neighbors for each point
-void procNeighborTableForkNNUsingDirectTable(std::vector<std::vector<DTYPE> > * NDdataPoints, int k_Neighbors, std::vector<uint64_t> *queryPts, uint64_t * nearestNeighborTable)
+void procNeighborTableForkNNUsingDirectTable(DTYPE * dataset, const uint64_t NPOINTS, const uint64_t NDIM, int k_Neighbors, std::vector<uint64_t> *queryPts, uint64_t * nearestNeighborTable)
 {
 
 
@@ -1262,7 +1275,7 @@ void procNeighborTableForkNNUsingDirectTable(std::vector<std::vector<DTYPE> > * 
 	
 	uint64_t KNN=k_Neighbors+1;
 
-	for (uint64_t i=0; i<(uint64_t)NDdataPoints->size()*(KNN); i+=(KNN)){
+	for (uint64_t i=0; i<NPOINTS*KNN; i+=KNN){
 		//check to see if the neighbors haven't been found for each point, i.e., are set to -1
 		// if (nearestNeighborTable[i]==-1)
 		//Aug 22
@@ -1295,7 +1308,7 @@ void procNeighborTableForkNNUsingDirectTable(std::vector<std::vector<DTYPE> > * 
 }
 
 
-void procNeighborTableForkNNUsingDirectTableGPUOnly(std::vector<std::vector<DTYPE> > * NDdataPoints, int k_Neighbors, std::vector<uint64_t> *queryPts, uint64_t * nearestNeighborTable)
+void procNeighborTableForkNNUsingDirectTableGPUOnly(DTYPE * dataset, const uint64_t NPOINTS, const uint64_t NDIM,  int k_Neighbors, std::vector<uint64_t> *queryPts, uint64_t * nearestNeighborTable)
 {
 
 
@@ -2529,7 +2542,7 @@ uint64_t getLinearID_nDimensions(unsigned int * indexes, unsigned int * dimLen, 
 //we can use this as an offset to calculate where points are located in the grid
 //max arr- the maximum value of the points in each dimensions + epsilon 
 //returns the time component of sorting the dimensions when SORT=1
-void generateNDGridDimensions(std::vector<std::vector <DTYPE> > *NDdataPoints, DTYPE epsilon, DTYPE* minArr, DTYPE* maxArr, unsigned int * nCells, uint64_t * totalCells)
+void generateNDGridDimensions(DTYPE * dataset, const uint64_t NPOINTS, const uint64_t NDIM, DTYPE epsilon, DTYPE* minArr, DTYPE* maxArr, unsigned int * nCells, uint64_t * totalCells)
 {
 
 	printf("\n\n*****************************\nGenerating grid dimensions.\n*****************************\n");
@@ -2544,20 +2557,20 @@ void generateNDGridDimensions(std::vector<std::vector <DTYPE> > *NDdataPoints, D
 	
 	//make the min/max values for each grid dimension the first data element
 	for (uint64_t j=0; j<NUMINDEXEDDIM; j++){
-		minArr[j]=(*NDdataPoints)[0][j];
-		maxArr[j]=(*NDdataPoints)[0][j];
+		minArr[j]=dataset[j];
+		maxArr[j]=dataset[j];
 	}
 
 
 
-	for (uint64_t i=1; i<NDdataPoints->size(); i++)
+	for (uint64_t i=1; i<NPOINTS; i++)
 	{
 		for (uint64_t j=0; j<NUMINDEXEDDIM; j++){
-		if ((*NDdataPoints)[i][j]<minArr[j]){
-			minArr[j]=(*NDdataPoints)[i][j];
+		if (dataset[i*NDIM+j]<minArr[j]){
+			minArr[j]=dataset[i*NDIM+j];
 		}
-		if ((*NDdataPoints)[i][j]>maxArr[j]){
-			maxArr[j]=(*NDdataPoints)[i][j];
+		if (dataset[i*NDIM+j]>maxArr[j]){
+			maxArr[j]=dataset[i*NDIM+j];
 		}	
 		}
 	}	
@@ -2625,7 +2638,7 @@ void CPUBruteForceTable(std::vector<std::vector <DTYPE> > *NDdataPoints, DTYPE e
 }
 
 //reorders the input data by variance of each dimension
-void ReorderByDimension(std::vector<std::vector <DTYPE> > *NDdataPoints)
+void ReorderByDimension(DTYPE * dataset, const uint64_t NPOINTS, const uint64_t NDIM)
 {
 	
 	double tstart_sort=omp_get_wtime();
@@ -2641,32 +2654,35 @@ void ReorderByDimension(std::vector<std::vector <DTYPE> > *NDdataPoints)
 	int greatest_variance_dim=0;
 
 	
-	int sample=100;
+	uint64_t sample=100;
 	DTYPE inv_sample=1.0/(sample*1.0);
 	printf("\nCalculating variance based on on the following fraction of pts: %f",inv_sample);
 	double tvariancestart=omp_get_wtime();
 		//calculate the variance in each dimension	
-		for (int i=0; i<GPUNUMDIM; i++)
+		for (uint64_t i=0; i<GPUNUMDIM; i++)
 		{
 			//first calculate the average in the dimension:
 			//only use every 10th point
-			for (int j=0; j<(*NDdataPoints).size(); j+=sample)
+			for (uint64_t j=0; j<NPOINTS; j+=sample)
 			{
-			sums[i]+=(*NDdataPoints)[j][i];
+			// sums[i]+=(*NDdataPoints)[j][i];
+			uint64_t offset = j*NDIM+i;
+			sums[i]+=dataset[offset];
 			}
 
 
-			average[i]=(sums[i])/((*NDdataPoints).size()*inv_sample);
+			average[i]=(sums[i])/(NPOINTS*inv_sample);
 			// printf("\nAverage in dim: %d, %f",i,average[i]);
 
 			//Next calculate the std. deviation
 			sums[i]=0; //reuse this for other sums
-			for (int j=0; j<(*NDdataPoints).size(); j+=sample)
+			for (uint64_t j=0; j<NPOINTS; j+=sample)
 			{
-			sums[i]+=(((*NDdataPoints)[j][i])-average[i])*(((*NDdataPoints)[j][i])-average[i]);
+				uint64_t offset = j*NDIM+i;
+				sums[i]+=((dataset[offset])-average[i])*((dataset[offset])-average[i]);
 			}
 			
-			dim_variance[i].variance=sums[i]/((*NDdataPoints).size()*inv_sample);
+			dim_variance[i].variance=sums[i]/(NPOINTS*inv_sample);
 			dim_variance[i].dim=i;
 			
 			// printf("\nDim:%d, variance: %f",dim_variance[i].dim,dim_variance[i].variance);
@@ -2694,22 +2710,25 @@ void ReorderByDimension(std::vector<std::vector <DTYPE> > *NDdataPoints)
 	printf("\nDimension with greatest variance: %d",greatest_variance_dim);
 
 	//copy the database
-	// double * tmp_database= (double *)malloc(sizeof(double)*(*NDdataPoints).size()*(GPUNUMDIM));  
+	// double * tmp_database= (double *)malloc(sizeof(double)*NPOINTS*(GPUNUMDIM));  
 	// std::copy(database, database+((*DBSIZE)*(GPUNUMDIM)),tmp_database);
-	std::vector<std::vector <DTYPE> > tmp_database;
+	// std::vector<std::vector <DTYPE> > tmp_database;
+	DTYPE * tmp_dataset = (DTYPE*)malloc(sizeof(DTYPE)*NPOINTS*NDIM); 
 
 	//copy data into temp database
-	tmp_database=(*NDdataPoints);
+	memcpy(tmp_dataset, dataset, sizeof(DTYPE)*NPOINTS*NDIM);
 
 	
 	
-	#pragma omp parallel for num_threads(5) shared(NDdataPoints, tmp_database)
-	for (int j=0; j<GPUNUMDIM; j++){
+	#pragma omp parallel for num_threads(5) shared(dataset, tmp_dataset)
+	for (uint64_t j=0; j<GPUNUMDIM; j++){
 
-		int originDim=dim_variance[j].dim;	
-		for (int i=0; i<(*NDdataPoints).size(); i++)
+		uint64_t originDim=dim_variance[j].dim;	
+		for (uint64_t i=0; i<NPOINTS; i++)
 		{	
-			(*NDdataPoints)[i][j]=tmp_database[i][originDim];
+			uint64_t offsetOut = i*NDIM+j;
+			uint64_t offsetIn = i*NDIM+originDim;
+			dataset[offsetOut]=tmp_dataset[offsetIn];
 		}
 	}
 
@@ -2718,6 +2737,8 @@ void ReorderByDimension(std::vector<std::vector <DTYPE> > *NDdataPoints)
 	// printf("\nTime to sort/reorder only: %f",tendsortreorder-tstartsortreorder);
 	double timecomponent=tend_sort - tstart_sort;
 	printf("\nTime to reorder cols by variance (this gets added to the time because its an optimization): %f",timecomponent);
+
+	free(tmp_dataset);
 	
 }
 
