@@ -1,12 +1,15 @@
 # Update Oct. 6, 2026
 
 **Billion point scale support**
+
 The code has been updated to execute on billion-point scale datasets. 
 
 **New Optimizations**
+
 Added an instruction level parallelism (ILP) optimization that stores partial distances in registers. The optimization is briefly described here: Gowanlock, M., Gallet, B., and Donnelly, B. (2023) "Optimization and Comparison of Coordinate-and Metric-Based Indexes on GPUs for Distance Similarity Searches." International Conference on Computational Science. Cham: Springer Nature Switzerland, 2023.
 
 **Fixes**
+
 Fixed compilation errors with Thrust and CUB that occur due to newer versions of CUDA.
 
 **Implementations**
@@ -14,6 +17,7 @@ The Python wrapper around this code has been deprecated and only the C/CUDA code
 
 
 **Parameters**
+
 When the original paper (below) was published, the GPU employed in the evaluation was an Nvidia GP100 (Pascal generation) with 16 GiB of global memory. As such, $k$NN searches were executed in batches such that the working set does not exceed global memory capacity when the dataset and/or $k$ was sufficiently large. Newer generations of GPUs have additional global memory and so to obtain the best performance with this algorithm, it may be preferable to increase the batch size (parameter GPUBUFFERSIZE). Furthermore, newer generations of GPUs have more compute capacity and so it may be preferable to increase the number of threads assigned to compute the distance calculations for each query point (parameter STATICTHREADSPERPOINT).
 
 A parameter sweep was conducted using the real-world datasets and parameters below using an RTX6000 Pro, which has a compute capability of 12.0 and 96 GiB of global memory. $k=32$ was selected as a nominal value for the small to moderate sized datasets, and $k=4$ was selected for the billion point datasets.
