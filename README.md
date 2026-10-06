@@ -1,3 +1,53 @@
+# Update Oct. 6, 2026
+
+**Billion point scale support**
+The code has been updated to execute on billion-point scale datasets. 
+
+**New Optimizations**
+Added an instruction level parallelism (ILP) optimization that stores partial distances in registers. The optimization is briefly described here: Gowanlock, M., Gallet, B., and Donnelly, B. (2023) "Optimization and Comparison of Coordinate-and Metric-Based Indexes on GPUs for Distance Similarity Searches." International Conference on Computational Science. Cham: Springer Nature Switzerland, 2023.
+
+**Fixes**
+Fixed compilation errors with Thrust and CUB that occur due to newer versions of CUDA.
+
+**Implementations**
+The Python wrapper around this code has been deprecated and only the C/CUDA code works at present. I plan on updating this in the future.
+
+
+**Parameters**
+When the original paper (below) was published, the GPU employed in the evaluation was an Nvidia GP100 (Pascal generation) with 16 GiB of global memory. As such, $k$NN searches were executed in batches such that the working set does not exceed global memory capacity when the dataset and/or $k$ was sufficiently large. Newer generations of GPUs have additional global memory and so to obtain the best performance with this algorithm, it may be preferable to increase the batch size (parameter GPUBUFFERSIZE). Furthermore, newer generations of GPUs have more compute capacity and so it may be preferable to increase the number of threads assigned to compute the distance calculations for each query point (parameter STATICTHREADSPERPOINT).
+
+A parameter sweep was conducted using the real-world datasets and parameters below using an RTX6000 Pro, which has a compute capability of 12.0 and 96 GiB of global memory. $k=32$ was selected as a nominal value for the small to moderate sized datasets, and $k=4$ was selected for the billion point datasets.
+
+The fixed parameters used to execute the datasets are as follows. We performed a parameter sweep across two parameters on each dataset: GPUBUFFERSIZE and STATICTHREADSPERPOINT.
+
+Observe from the table below that the qualitative dataset sizes are small, moderate, or large, and the dimensionality is low or high, where "high" is 90 dimensional, much larger than in the paper, but certainly not high dimensional in terms of other datasets in the literature (e.g., image descriptor vectors output from neural networks). Also, we note from the table that any dataset exceeding 6 dimensions (GPUNUMDIM) is only indexed in 6 dimensions (NUMINDEXEDDIM) such that index search overhead is not a bottleneck. ILP refers to the optimization that performs pair-wise coordinate distances in registers using instruction level parallelism. It is useful when the data dimensionality is >=4, and the same is true of the SHORTCIRCUIT parameter that aborts computing the distance calculation early if the partial distance exceeds the search radius.
+
+
+
+| Dataset | Num. Dimensions | Dataset Size |k|GPUNUMDIM|NUMINDEXEDDIM|ILP|SHORTCIRCUIT|Qualitative Characteristics|
+| -------- | --------: | --------: |--------: |--------:|--------:|--------:|--------:|:--------|
+| NGSIM    | 2     | 1048574     |  32        | 2|2|0|0|Small dataset size, low dimensionality|
+| Ionosphere| 2     | 5159737     |  32       | 2|2|0|0|Moderate dataset size, low dimensionality|
+| SuSy    | 18     | 5000000     |  32      | 18|6|4|1|Moderate dataset size, moderate dimensionality|
+| Million Song Dataset (MSD)    | 90     | 515345     |  32       | 90|6|4|1|Small dataset size, high dimensionality|
+| Gaia DR 2 (ra/dec)    | 2     | 1692919135     |  4       | 2|2|0|0|Large dataset size, low dimensionality|
+| Kitti    | 3     | 1000000000     |  4       | 3|3|0|0|Large dataset size, low dimensionality|
+
+
+Using the experiments above, the following parameters should be employed to achieve good performance on these datasets and others. Depending on what GPU model is used, and the size of the dataset, GPUBUFFERSIZE may need to be decreased to prevent memory allocation errors where there may be insufficient memory capacity to store the result buffer.
+
+
+|        | Dataset size: Small | Dataset size: Moderate | Dataset size: Large  |
+|--------| --------            | --------             | -------- |
+| Data Dimensionality: Low     | GPUBUFFERSIZE=50000000 (50M), STATICTHREADSPERPOINT=8     | GPUBUFFERSIZE=100000000 (100M), STATICTHREADSPERPOINT=32     |GPUBUFFERSIZE=500000000 (500M), STATICTHREADSPERPOINT=32     |
+| Data Dimensionality: Moderate/High    | GPUBUFFERSIZE=200000000 (200M), STATICTHREADSPERPOINT=128     | GPUBUFFERSIZE=500000000 (500M), STATICTHREADSPERPOINT=128     |GPUBUFFERSIZE=500000000 (500M), STATICTHREADSPERPOINT=128     |
+
+
+**Future Work**
+- Fix the Python wrapper
+- Remove batching and switch to unified memory which would improve portability and reduce the number of parameters
+
+
 # Overview: Hybrid CPU+GPU k-nearest-neighbor self-join algorithm
 
 **Update: Instructions for using the Python wrapper are found at the bottom of the readme.**
@@ -25,7 +75,7 @@ Preprint: https://jan.ucc.nau.edu/mg2745/publications/Gowanlock_JPDC2020.pdf
 ANN algorithm: https://www.cs.umd.edu/~mount/ANN/
 
 
-# Parameter tuning to deal with the inefficiency described above
+# Parameter tuning to address the inefficiency described above
 
 The GPU algorithm will search an initial search radius, where a fraction of the query points will have at least *k* nearest neighbors, and some of the queries will fail to find at least *k* nearest neighbors. Based on the fraction of failed queries, the algorithm will increase the search radius, and re-attempt the searches. Thus, the performance of the algorithm depends on the initial and subsequent search distances. 
 
@@ -49,10 +99,10 @@ The parameters file, params.h, contains several parameters. The main parameters 
 # Executing the algorithm
 Update the Makefile to include the compute capability of your Nvidia GPU, and compile using the Makefile.
 
-On the command line, the algorithm takes as input the dataset file \<FNAME\>, the dimensionality of the data \<DIM\>, and the value for *k* \<K\>. The program is executed as follows:
+On the command line, the algorithm takes as input the dataset file \<FNAME\>, the dataset size \<DATASET SIZE\>,  the dimensionality of the data \<DIM\>, and the value for *k* \<K\>. The program is executed as follows:
 
 ```
-$./main <FNAME> <DIM> <K>
+$./main <FNAME> <DATASET SIZE> <DIM> <K>
 ```
 
 By default, the algorithm will output the neighbors to a file called "KNN_out.txt", which contains the point ID and all of its neighbors. The code can be modified to incorporate the KNN into other applications such that printing to a file is unnecessary.
